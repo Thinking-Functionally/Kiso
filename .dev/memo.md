@@ -10,9 +10,9 @@ Session handover document. Read at session start.
 
 ## Current Task
 
-AssemblyScript backend: M0–M2 done (design `.dev/design/08-assemblyscript-backend.md`, D13–D18; code in
-`packages/kiso/src/codegen-as/` and `packages/kiso/as-runtime/`). Benchmark gate fixed by numeric
-specialization (D19): fib(32) wasm 4–11 ms vs JS 14 ms. Next: M3 (collections), re-benchmark there. Benchmark: `KISO_BENCH=1 npx vitest run test/bench/as-vs-js.test.ts`.
+AssemblyScript backend: M0–M3 done (design `.dev/design/08-assemblyscript-backend.md`, D13–D20; code in
+`packages/kiso/src/codegen-as/` and `packages/kiso/as-runtime/`). Next: M4 (`host/` + CLI target; also a real
+`kiso build` that invokes asc with the `minimal`/`stub` runtime). Benchmark: `KISO_BENCH=1 npx vitest run test/bench/as-vs-js.test.ts`.
 
 ## Task Queue
 

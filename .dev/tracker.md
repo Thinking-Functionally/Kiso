@@ -335,6 +335,25 @@ all args are `Num`, else falls back to the generic body; exports call it directl
 fib(32) JS 14 ms vs wasm 11 ms (incremental) / 10 ms (minimal) / 4 ms (stub). Limits: non-numeric code (collections,
 strings, polymorphic calls) still pays boxing; a general unboxed representation is deferred until M3 benchmarks show need.
 
+### D20: AS Collections and Performance Model (M3)
+
+**Date**: 2026-11-05
+
+**Decision**: (1) `Vec` shares an append-only backing array (each version sees its first `n` slots) so `conj` is amortized
+O(1) and persistence holds; `assoc`/`pop` copy. (2) `MapV` is an insertion-ordered array map with a lazily built
+open-addressing index when n > 8, shared along append chains (readers ignore entries at positions >= their n);
+`dissoc`/value-update copy. (3) Structural `=` and hashing (nil/bool/num/str/kw/vector/map keys work; the JS backend
+cannot look up vector/map keys by value). (4) Small ints [-128,1024) are cached; provably number-typed locals
+(`numeric-locals.ts`) are unboxed f64 and boxed only when escaping. (5) Core fns usable as values (`(reduce + 0 xs)`)
+via generated `Core_*` Fn classes reusing the inline op emitter. (6) `println` prints Clojure-style; JS `println`
+prints `[object Object]`, so differential tests print scalars.
+**Subset**: vector, map, keyword, str, count/nth/get/assoc/dissoc/conj/first/second/last/peek/pop/contains?/keys/vals/
+vec/reduce/update/get-in/max/min/pr-str/prn and predicates. Not yet: sets, lists/`rest`/`seq`/lazy seqs, `map`/`filter`,
+`conj` on nil/lists, rest params (M4+).
+**GC flavor matters**: benchmark (Node, warm): fib(32) JS 14 / wasm 4-10 ms; vector build+sum 200k JS 18 / wasm 6-22;
+map assoc+get 200k JS 58 / wasm stub 24, minimal 32, incremental 77. Default build profile is `minimal` (`stub` for short-lived
+CLI/serverless invocations); `incremental` is slower than JS on allocation-heavy code.
+
 ## Known Issues
 
 All previously tracked issues (I1–I6) have been resolved. See `archive/bugs-fixed.md` for details.

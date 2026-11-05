@@ -7,6 +7,7 @@
 import type { LExpr, LFunction, LModule, LStmt, LVar, LClosure } from './lowered.js';
 import { AsUnsupportedError } from './supported.js';
 import { mangle } from './mangle.js';
+import { inferNumericLocals, isArithCall, isNumTyped } from './numeric-locals.js';
 import { NumericCheck, emitNative, nativeName } from './numeric.js';
 
 const MAX_DIRECT = 3;
@@ -90,6 +91,7 @@ class Emitter {
   private globals = new Set<string>();
   private fnById = new Map<number, LFunction>();
   private native = new Set<number>();
+  private nums = new Set<string>();
 
   constructor(private mod: LModule) {
     for (const f of mod.functions) this.fnById.set(f.id, f);
@@ -202,8 +204,39 @@ class Emitter {
     const fn = this.fnById.get(c.fnId)!;
     // Capture order is the fn's declared capture order
     const byName = new Map(c.captures.map((cap) => [cap.name, cap.source]));
-    const ctorArgs = fn.captures.map((n) => this.varRef(byName.get(n)!));
+    const ctorArgs = fn.captures.map((n) => this.expr(byName.get(n)!));
     return `new Fn_${fn.id}(${ctorArgs.join(', ')})`;
+  }
+
+    private numTyped(e: LExpr): boolean {
+    return isNumTyped(e, this.nums, this.globals);
+  }
+
+  /** AS expression of native f64 type for any expression (unboxing when needed). */
+  private fx(e: LExpr): string {
+    if (!this.numTyped(e)) return `toF64(${this.expr(e)})`;
+    return this.fexpr(e);
+  }
+
+  private fexpr(e: LExpr): string {
+    if (e.type === 'literal') {
+      const n = e.value as number;
+      return Number.isNaN(n) ? 'NaN' : n === Infinity ? 'Infinity' : n === -Infinity ? '-Infinity' : Number.isInteger(n) ? `${n}.0` : String(n);
+    }
+    if (e.type === 'var') return `l_${mangle(e.name)}`;
+    const inv = e as Extract<LExpr, { type: 'invoke' }>;
+    const op = (inv.fn as LVar).name;
+    const a = inv.args.map((x) => this.fx(x));
+    switch (op) {
+      case '+': return a.length === 0 ? '0.0' : `(${a.join(' + ')})`;
+      case '*': return a.length === 0 ? '1.0' : `(${a.join(' * ')})`;
+      case '-': return a.length === 1 ? `(-${a[0]})` : `(${a.join(' - ')})`;
+      case '/': return `(${a[0]} / ${a[1]})`;
+      case 'rem': return `(${a[0]} % ${a[1]})`;
+      case 'mod': return `nmod(${a[0]}, ${a[1]})`;
+      case 'inc': return `(${a[0]} + 1.0)`;
+      default: return `(${a[0]} - 1.0)`;
+    }
   }
 
   /** AS expression of native `bool` type. */
@@ -211,6 +244,13 @@ class Emitter {
     if (e.type === 'invoke') {
       const core = this.coreOpFor(e.fn);
       if (core) {
+        const cmp = { '<': '<', '>': '>', '<=': '<=', '>=': '>=' }[core.op];
+        if (cmp && e.args.length === 2) return `(${this.fx(e.args[0]!)} ${cmp} ${this.fx(e.args[1]!)})`;
+        const pred = { 'zero?': '== 0', 'pos?': '> 0', 'neg?': '< 0' }[core.op];
+        if (pred && e.args.length === 1) return `(${this.fx(e.args[0]!)} ${pred})`;
+        if (core.op === '=' && e.args.length === 2 && this.numTyped(e.args[0]!) && this.numTyped(e.args[1]!)) {
+          return `(${this.fexpr(e.args[0]!)} == ${this.fexpr(e.args[1]!)})`;
+        }
         const op = CORE_OPS[core.op];
         if (op && op.kind === 'bool' && this.arityOk(op, e.args.length)) {
           return `${op.fn}(${this.args(e.args).join(', ')})`;
@@ -304,9 +344,9 @@ class Emitter {
       case 'keyword':
         return this.constant(`k:${e.ns ?? ''}/${e.name}`, `new Kw(${JSON.stringify(e.ns ?? '')}, ${JSON.stringify(e.name)})`);
       case 'var':
-        return this.varRef(e);
+        return e.kind === 'local' && this.nums.has(e.name) ? `mkNum(l_${mangle(e.name)})` : this.varRef(e);
       case 'invoke':
-        return this.invoke(e);
+        return isArithCall(e, this.globals) ? `mkNum(${this.fexpr(e)})` : this.invoke(e);
       case 'closure':
         return this.closure(e);
       case 'host-call':
@@ -335,8 +375,10 @@ class Emitter {
   private stmt(s: LStmt, ind: string): string[] {
     switch (s.type) {
       case 'let':
+        if (this.nums.has(s.name)) return [`${ind}let l_${mangle(s.name)}: f64 = ${s.init ? this.fexpr(s.init) : '0.0'};`];
         return [`${ind}let l_${mangle(s.name)}: Value = ${s.init ? this.expr(s.init) : 'NIL'};`];
       case 'assign':
+        if (this.nums.has(s.name)) return [`${ind}l_${mangle(s.name)} = ${this.fexpr(s.value)};`];
         return [`${ind}l_${mangle(s.name)} = ${this.expr(s.value)};`];
       case 'set-global':
       case 'def': {
@@ -373,7 +415,7 @@ class Emitter {
         for (const b of s.bindings) {
           const fn = this.fnById.get(b.closure.fnId)!;
           for (const cap of b.closure.captures) {
-            lines.push(`${ind}changetype<Fn_${fn.id}>(l_${mangle(b.name)}).c_${mangle(cap.name)} = ${this.varRef(cap.source)};`);
+            lines.push(`${ind}changetype<Fn_${fn.id}>(l_${mangle(b.name)}).c_${mangle(cap.name)} = ${this.expr(cap.source)};`);
           }
         }
         return lines;
@@ -411,6 +453,7 @@ class Emitter {
         const argv = ar.params.map((p) => `changetype<Num>(l_${mangle(p)}).v`).join(', ');
         body.push(`    if (${guard}) return mkNum(${nativeName(fn)}(${argv}));`);
       }
+      this.nums = inferNumericLocals(ar.body, ar.params, this.globals);
       body.push(...this.stmts(ar.body, '    '));
       const last = ar.body[ar.body.length - 1];
       if (!last || (last.type !== 'return' && last.type !== 'loop')) body.push('    return NIL;');
@@ -448,6 +491,7 @@ class Emitter {
   emit(exports: string[]): string {
     const natives = this.mod.functions.filter((f) => this.native.has(f.id)).flatMap((f) => [...emitNative(f), '']);
     const fnClasses = this.mod.functions.flatMap((f) => [...this.fnClass(f), '']);
+    this.nums = inferNumericLocals(this.mod.body, [], this.globals);
     const init = this.stmts(this.mod.body, '  ');
     const wrappers = exports.flatMap((n) => [...this.exportWrapper(n), '']);
     const header = [

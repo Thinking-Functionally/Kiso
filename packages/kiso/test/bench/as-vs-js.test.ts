@@ -29,3 +29,33 @@ it.skipIf(!process.env.KISO_BENCH)('fib(32): JS backend vs AS/wasm', async () =>
   }
   console.log('\n' + rows.join('\n'));
 }, 300_000);
+
+const CASES: Record<string, { src: string; call: string; n: number }> = {
+  'vector build+sum (200k)': {
+    src: '(defn ^:export run [n] (let [v (loop [i 0 v []] (if (< i n) (recur (inc i) (conj v i)) v))] (reduce + 0 v)))',
+    call: 'run',
+    n: 200000,
+  },
+  'map assoc+get (200k)': {
+    src: '(defn ^:export run [n] (let [m (loop [i 0 m {}] (if (< i n) (recur (inc i) (assoc m i (* i 2))) m))] (loop [i 0 s 0] (if (< i n) (recur (inc i) (+ s (get m i))) s))))',
+    call: 'run',
+    n: 200000,
+  },
+};
+
+for (const [label, c] of Object.entries(CASES)) {
+  it.skipIf(!process.env.KISO_BENCH)(label, async () => {
+    const js = await runJs(c.src);
+    time(() => js.exports[c.call]!(c.n));
+    const [jr, jsMs] = time(() => js.exports[c.call]!(c.n)); // second run: JIT warm
+    const rows = [`js            result=${String(jr)} ${jsMs.toFixed(0)}ms`];
+    for (const runtime of ['incremental', 'minimal', 'stub'] as const) {
+      const bytes = await buildWasm(compile(c.src, { target: 'as' }).code, { runtime });
+      const inst = await runWasm(bytes);
+      const [, cold] = time(() => inst.exports[c.call]!(c.n));
+      const [r, ms] = time(() => inst.exports[c.call]!(c.n));
+      rows.push(`wasm ${runtime.padEnd(11)} result=${String(r)} cold=${cold.toFixed(0)}ms warm=${ms.toFixed(0)}ms size=${bytes.length}B`);
+    }
+    console.log(`\n[${label}]\n` + rows.join('\n'));
+  }, 300_000);
+}

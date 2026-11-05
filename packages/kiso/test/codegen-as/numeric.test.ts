@@ -21,6 +21,15 @@ describe('numeric specialization (D19)', () => {
     expect(as).toBe(js);
     expect(as).toBe('4950 3 4 2 -1\n');
   }, 60_000);
+  it('keeps provably numeric locals unboxed in generic fns', () => {
+    const code = asOf('(defn f [v] (loop [i 0 s 0] (if (< i (count v)) (recur (inc i) (+ s (nth v i))) s)))');
+    expect(code).toContain('let l_i: f64');
+    expect(code).toContain('let l_s: f64');
+  });
+  it('boxes numeric locals that escape into closures and collections', async () => {
+    const { js, as } = await both('(defn mk [n] (let [k (* n 2)] (fn [x] (+ x k))))\n(println ((mk 5) 1) (count [(inc 1) (inc 2)]))');
+    expect(as).toBe(js);
+  }, 60_000);
   it('falls back to the generic body (which aborts) for non-number args', async () => {
     const { runKisoAs } = await import('./helpers/build-wasm.js');
     await expect(runKisoAs('(defn id [x] (if (< x 0) (- x) x))\n(println (id "a"))')).rejects.toThrow(/not a number/);

@@ -1,6 +1,12 @@
 # 08 — AssemblyScript Backend
 
-Status: **M0–M2 complete** (lowering + vertical-slice emitter). M3 is gated on the numeric-representation decision below.
+Status: **M0–M3 complete** (lowering, emitter, numeric specialization, core collections). Next: M4 (`host/` + CLI target).
+
+## M3 Outcome
+
+- Vectors, maps (insertion-ordered, indexed past 8 entries), keywords, strings, structural `=`/hash, core fns as first-class values, keyword/map/vector as functions; see D20 for the exact subset and limits.
+- Performance: number-typed locals are unboxed, small ints cached, default build uses the `minimal` GC (D20). Warm Node timings: wasm beats JS on fib, vector and map benchmarks except with the `incremental` GC on map-heavy code.
+- Differential tests (`collections.test.ts`) cover 13 programs plus AS-only semantics (structural keys, printing).
 
 ## M2 Outcome
 
