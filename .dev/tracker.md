@@ -397,6 +397,21 @@ this module. (5) `reify` -> runtime `Reified` holding `"Proto/method/argc"` -> F
 `instance?`/`satisfies?`, mutable fields. **JS backend bugs found (not fixed)**: record methods emit bare `n` instead of `this.n`, so tests assert
 Clojure-correct output directly instead of diffing against JS.
 
+### D24: AS serverless target (M5)
+
+**Date**: 2026-11-05
+
+**Decision**: (1) `kiso build app.cljs --worker [--handler handle] [--out-dir dist]` compiles with `worker: <def>` and emits
+`export function kiso_handle(req: string): string` = `jsonStringify(handler(jsonParse(req)))`, plus `worker.js`
+(`createWorker(wasm)` from `@clojurewasm/kiso/host/worker`). (2) Request map `{:method :url :path :query :headers :body}`;
+response map `{:status :headers :body}`; non-string body is JSON-encoded with default `application/json`. JSON objects parse
+to **keyword-keyed** maps (so use `(:x-t (:headers req))`, not `(get headers "x-t")`). (3) **Fresh wasm instance per request**
+because the recommended `minimal`/`stub` GC never frees; instantiating a compiled Module is cheap. (4) Host split into
+platform-neutral `src/host/core.ts` (`instantiateCore`, `callString`) and Node wrapper `node.ts`; `worker.ts` uses env
+bindings (string values only), no fs, `host/exit` -> 500. (5) `host/json-parse` / `host/json-stringify` exposed for user code.
+**Not done**: `host/fetch` (async, cannot be called from synchronous wasm; needs JSPI/Asyncify), real workerd/wrangler run
+(only Node `Request`/`Response` tests), `kiso serve`.
+
 ## Known Issues
 
 All previously tracked issues (I1–I6) have been resolved. See `archive/bugs-fixed.md` for details.

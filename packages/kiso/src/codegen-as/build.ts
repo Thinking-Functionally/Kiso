@@ -4,6 +4,8 @@ import { fileURLToPath } from 'node:url';
 export type GcRuntime = 'incremental' | 'minimal' | 'stub';
 export type BuildOptions = { optimize?: boolean; runtime?: GcRuntime };
 
+const JSON_PATH = fileURLToPath(new URL('../../as-runtime/kiso-json.ts', import.meta.url));
+
 // src/codegen-as and dist/codegen-as are both two levels below the package root
 const RUNTIME_PATH = fileURLToPath(new URL('../../as-runtime/kiso-runtime.ts', import.meta.url));
 
@@ -15,7 +17,11 @@ export async function buildWasm(asSource: string, opts: BuildOptions = {}): Prom
   } catch {
     throw new Error('building wasm requires the "assemblyscript" package; install it with: npm install assemblyscript');
   }
-  const files: Record<string, string> = { 'main.ts': asSource, 'kiso-runtime.ts': readFileSync(RUNTIME_PATH, 'utf8') };
+  const files: Record<string, string> = {
+    'main.ts': asSource,
+    'kiso-runtime.ts': readFileSync(RUNTIME_PATH, 'utf8'),
+    'kiso-json.ts': readFileSync(JSON_PATH, 'utf8'),
+  };
   let binary: Uint8Array | null = null;
   let stderr = '';
   const args = [

@@ -13,7 +13,15 @@ export type CliArgs =
       target: 'js' | 'as';
       exports: string[];
     }
-  | { command: 'build'; file: string; outFile: string | null; runtime: GcRuntime; exports: string[] }
+  | {
+      command: 'build';
+      file: string;
+      outFile: string | null;
+      runtime: GcRuntime;
+      exports: string[];
+      worker: string | null;
+      outDir: string | null;
+    }
   | { command: 'run'; file: string; runtime: GcRuntime; exports: string[]; programArgs: string[] };
 
 export function parseArgs(argv: string[]): CliArgs {
@@ -33,6 +41,8 @@ export function parseArgs(argv: string[]): CliArgs {
       export: { type: 'string', multiple: true },
       out: { type: 'string', short: 'o' },
       runtime: { type: 'string' },
+      worker: { type: 'boolean', default: false },
+      handler: { type: 'string' },
     },
   });
 
@@ -51,7 +61,15 @@ export function parseArgs(argv: string[]): CliArgs {
     }
     const exports = (values.export as string[] | undefined) ?? [];
     return command === 'build'
-      ? { command, file, outFile: (values.out as string | undefined) ?? null, runtime, exports }
+      ? {
+          command,
+          file,
+          outFile: (values.out as string | undefined) ?? null,
+          runtime,
+          exports,
+          worker: values.worker ? ((values.handler as string | undefined) ?? 'handle') : null,
+          outDir: (values['out-dir'] as string | undefined) ?? null,
+        }
       : { command, file, runtime, exports, programArgs };
   }
 

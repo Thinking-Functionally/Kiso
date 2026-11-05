@@ -16,7 +16,9 @@
     "./runtime/transient": "./dist/runtime/transient.js",
     "./vite": "./dist/api/vite-plugin.js",
     "./compiler": "./dist/api/compiler.js",
-    "./codegen": "./dist/api/codegen-hooks.js"
+    "./codegen": "./dist/api/codegen-hooks.js",
+    "./host/worker": "./dist/host/worker.js",
+    "./host/node": "./dist/host/node.js"
   },
   "keywords": [
     "clojurescript",

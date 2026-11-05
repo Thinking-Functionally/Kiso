@@ -23,8 +23,8 @@ export async function runWasm(bytes: Uint8Array, host: NodeHostOptions = {}): Pr
 }
 
 /** Compile Kiso source via the AS backend and run it. */
-export async function runKisoAs(src: string, opts: BuildOptions & { host?: NodeHostOptions } = {}): Promise<Instance> {
-  const { code } = compile(src, { target: 'as' });
+export async function runKisoAs(src: string, opts: BuildOptions & { host?: NodeHostOptions; worker?: string } = {}): Promise<Instance> {
+  const { code } = compile(src, { target: 'as', worker: opts.worker });
   return runWasm(await buildWasm(code, opts), opts.host);
 }
 

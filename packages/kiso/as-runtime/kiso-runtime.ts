@@ -353,13 +353,13 @@ function mapFind(m: MapV, k: Value): i32 {
   return -1;
 }
 
-function copyN(a: Array<Value>, n: i32): Array<Value> {
+export function copyN(a: Array<Value>, n: i32): Array<Value> {
   const out = new Array<Value>(n);
   for (let i = 0; i < n; i++) unchecked((out[i] = a[i]));
   return out;
 }
 
-function mapAssoc(m: MapV, k: Value, v: Value): MapV {
+export function mapAssoc(m: MapV, k: Value, v: Value): MapV {
   const j = mapFind(m, k);
   if (j >= 0) {
     const vals = copyN(m.vals, m.n);
@@ -1050,7 +1050,7 @@ export function hostNowV(): Value {
 
 // -- Printing ----------------------------------------------------------------
 
-function fmtNum(n: f64): string {
+export function fmtNum(n: f64): string {
   if (n != n) return "NaN";
   if (n == Infinity) return "Infinity";
   if (n == -Infinity) return "-Infinity";

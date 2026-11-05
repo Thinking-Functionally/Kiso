@@ -1,109 +1,17 @@
 import { readFileSync, writeFileSync } from 'node:fs';
+import { instantiateCore, type HostOptions, type KisoInstance } from './core.js';
 
-/** Thrown through wasm when the program calls `(host/exit n)`. */
-export class ExitSignal extends Error {
-  constructor(public code: number) {
-    super(`exit ${code}`);
-  }
-}
+export { ExitSignal, type KisoInstance } from './core.js';
+export type NodeHostOptions = HostOptions;
 
-export type NodeHostOptions = {
-  args?: string[];
-  env?: Record<string, string | undefined>;
-  stdin?: () => string;
-  write?: (s: string) => void;
-  readFile?: (path: string) => string;
-  writeFile?: (path: string, content: string) => void;
-  now?: () => number;
-};
-
-export type KisoInstance = {
-  exports: Record<string, (...a: number[]) => number | void>;
-  /** Runs `-main` if the module exports it. Returns the exit code (0 unless `host/exit` was called). */
-  runMain(): number;
-};
-
-type RuntimeExports = { __new(size: number, id: number): number; _start(): void };
-
-const STRING_ID = 2;
-
-/** Instantiate a Kiso wasm module with the Node host (the `kiso` and `host` import namespaces). */
-export async function instantiateKiso(bytes: Uint8Array, opts: NodeHostOptions = {}): Promise<KisoInstance> {
-  const memory = new WebAssembly.Memory({ initial: 1 });
-  let rt: RuntimeExports | null = null;
-  const read = (ptr: number): string => {
-    const len = new Uint32Array(memory.buffer)[(ptr - 4) >>> 2]! >>> 1;
-    // Chunked so very long strings do not overflow the argument limit
-    let out = '';
-    const u16 = new Uint16Array(memory.buffer, ptr, len);
-    for (let i = 0; i < len; i += 8192) out += String.fromCharCode(...u16.subarray(i, i + 8192));
-    return out;
-  };
-  const alloc = (s: string): number => {
-    const ptr = rt!.__new(s.length * 2, STRING_ID);
-    const u16 = new Uint16Array(memory.buffer, ptr, s.length);
-    for (let i = 0; i < s.length; i++) u16[i] = s.charCodeAt(i);
-    return ptr;
-  };
-  const args = opts.args ?? [];
-  const env = opts.env ?? process.env;
-  const write = opts.write ?? ((s: string) => void process.stdout.write(s));
-  const readFile = opts.readFile ?? ((p: string) => readFileSync(p, 'utf8'));
-  const writeFile = opts.writeFile ?? ((p: string, c: string) => writeFileSync(p, c));
-
-  const { instance } = (await WebAssembly.instantiate(bytes as BufferSource, {
-    env: {
-      memory,
-      abort: (msg: number, file: number, line: number, col: number) => {
-        throw new Error(`abort: ${msg ? read(msg) : ''} (${file ? read(file) : ''}:${line}:${col})`);
-      },
-    },
-    kiso: { write: (p: number) => write(read(p)) },
-    host: {
-      argc: () => args.length,
-      arg: (i: number) => alloc(args[i]!),
-      env: (n: number) => {
-        const v = env[read(n)];
-        return v === undefined ? 0 : alloc(v);
-      },
-      read_file: (p: number) => {
-        try {
-          return alloc(readFile(read(p)));
-        } catch {
-          return 0;
-        }
-      },
-      write_file: (p: number, c: number) => {
-        try {
-          writeFile(read(p), read(c));
-          return 1;
-        } catch {
-          return 0;
-        }
-      },
-      stdin: () => alloc(opts.stdin ? opts.stdin() : readFileSync(0, 'utf8')),
-      exit: (code: number) => {
-        throw new ExitSignal(code);
-      },
-      now: () => (opts.now ?? Date.now)(),
-    },
-  })) as unknown as WebAssembly.WebAssemblyInstantiatedSource;
-  rt = instance.exports as unknown as RuntimeExports;
-  const exports = instance.exports as unknown as KisoInstance['exports'];
-  const guarded = <T>(f: () => T): { code: number; value?: T } => {
-    try {
-      return { code: 0, value: f() };
-    } catch (e) {
-      if (e instanceof ExitSignal) return { code: e.code };
-      throw e;
-    }
-  };
-  const started = guarded(() => rt!._start());
-  return {
-    exports,
-    runMain() {
-      if (started.code !== 0) return started.code;
-      return typeof exports.main === 'function' ? guarded(() => exports.main!()).code : 0;
-    },
-  };
+/** Instantiate a Kiso wasm module with the Node host (fs, process.env, stdout, stdin). */
+export function instantiateKiso(bytes: Uint8Array, opts: NodeHostOptions = {}): Promise<KisoInstance> {
+  return instantiateCore(bytes, {
+    env: process.env,
+    write: (s) => void process.stdout.write(s),
+    readFile: (p) => readFileSync(p, 'utf8'),
+    writeFile: (p, c) => writeFileSync(p, c),
+    stdin: () => readFileSync(0, 'utf8'),
+    ...opts,
+  });
 }

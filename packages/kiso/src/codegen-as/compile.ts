@@ -12,10 +12,11 @@ export type AsCompileInput = {
   nodes: Node[];
   filename?: string;
   exports?: string[];
+  worker?: string;
 };
 
 export function compileAs(input: AsCompileInput): { code: string } {
-  const { forms, nodes, filename, exports } = input;
+  const { forms, nodes, filename, exports, worker } = input;
 
   if (exports && exports.length > 0) {
     try {
@@ -28,7 +29,7 @@ export function compileAs(input: AsCompileInput): { code: string } {
   try {
     const mod = lowerModule(nodes);
     const names = [...new Set([...collectExports(forms).map((e) => e.name), ...(exports ?? [])])];
-    return { code: emitAs(mod, { exports: names }) };
+    return { code: emitAs(mod, { exports: names, worker }) };
   } catch (err) {
     if (err instanceof AsUnsupportedError) {
       const form = forms[err.nodeIndex];

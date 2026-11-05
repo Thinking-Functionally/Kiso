@@ -1,6 +1,6 @@
 # 08 — AssemblyScript Backend
 
-Status: **M0–M4.5 complete** (lowering, emitter, numeric specialization, core collections). Next: M5 (serverless).
+Status: **M0–M5 complete** (lowering, emitter, numeric specialization, core collections). Next: M6 (full-stack).
 
 ## M3 Outcome
 
@@ -185,7 +185,7 @@ Support status is tracked in `.dev/status/vars.yaml` (new `as` field: `full` / `
 | M3.5 | Sets, lists, eager seqs, rest params, `apply`, `dotimes`, `ex-info` (D21) |
 | M4 | `host/` + CLI target: `kiso build`/`kiso run`, Node loader (D22; `host/fetch` deferred to M5) |
 | M4.5 | deftype/defrecord/protocols/reify/extend-type, static dispatch (D23; lazy seq and `try` remain deferred) |
-| M5 | Serverless target (Cloudflare Workers) |
+| M5 | Serverless target: `--worker`, `kiso_handle`, `createWorker`, JSON host fns (D24; `host/fetch` deferred) |
 | M6 | Full-stack: shared `.cljc` (`#?(:cljs … :as …)`), serialization, API contract, sample app |
 
 ## Open Questions

@@ -19,6 +19,8 @@ export type CompileOptions = {
   target?: 'js' | 'as';
   /** AS target only: entry points that must be defined. */
   exports?: string[];
+  /** AS target only: serverless handler def name (exported as `kiso_handle`). */
+  worker?: string;
 };
 
 export type CompileResult = {
@@ -119,7 +121,7 @@ export function compile(source: string, options?: CompileOptions): CompileResult
   }
 
   if (options?.target === 'as') {
-    return compileAs({ forms, nodes, filename, exports: options.exports });
+    return compileAs({ forms, nodes, filename, exports: options.exports, worker: options.worker });
   }
 
   let code: string;

@@ -17,6 +17,8 @@ export const RUNTIME_MODULE = './kiso-runtime';
 export type EmitOptions = {
   /** Clojure def names to export through the numeric (f64) ABI; `-main` becomes `main(): void`. */
   exports?: string[];
+  /** Serverless entry: def name of a `(fn [request-map] response-map)`, exported as `kiso_handle(json): json`. */
+  worker?: string;
 };
 
 // Core ops compiled to direct runtime calls. `value` returns Value, `bool` returns native bool.
@@ -98,6 +100,8 @@ const HOST_FNS: Record<string, { fn: string; arity: number }> = {
   'host/stdin': { fn: 'hostStdinV', arity: 0 },
   'host/exit': { fn: 'hostExitV', arity: 1 },
   'host/now': { fn: 'hostNowV', arity: 0 },
+  'host/json-parse': { fn: 'jsonParseV', arity: 1 },
+  'host/json-stringify': { fn: 'jsonStringifyV', arity: 1 },
 };
 
 const RUNTIME_IMPORTS = [
@@ -750,16 +754,22 @@ class Emitter {
     return [`export function ${wasm}(${names.map((n) => `${n}: f64`).join(', ')}): f64 {`, `  return toF64(${call(names)});`, '}'];
   }
 
-  emit(exports: string[]): string {
+  private workerEntry(handler: string): string[] {
+    if (!this.globals.has(handler)) unsupported(`worker handler ${handler}`, 'not defined in this module');
+    return ['export function kiso_handle(req: string): string {', `  return jsonStringify(callV1(g_${mangle(handler)}, jsonParse(req)));`, '}', ''];
+  }
+
+  emit(exports: string[], worker?: string): string {
     const natives = this.mod.functions.filter((f) => this.native.has(f.id)).flatMap((f) => [...emitNative(f), '']);
     const fnClasses = this.mod.functions.flatMap((f) => [...this.fnClass(f), '']);
     this.nums = inferNumericLocals(this.mod.body, [], this.globals);
     const init = this.stmts(this.mod.body, '  ');
     const typeClasses = [...this.types.values()].flatMap((t) => [...this.typeClass(t), '']);
     const protoClasses = [...this.protoFns].flatMap(([g, p]) => [...this.protocolClass(g, p.protocol, p.method), '']);
-    const wrappers = exports.flatMap((n) => [...this.exportWrapper(n), '']);
+    const wrappers = [...exports.flatMap((n) => [...this.exportWrapper(n), '']), ...(worker ? this.workerEntry(worker) : [])];
     const header = [
       `import { ${RUNTIME_IMPORTS.join(', ')} } from "${RUNTIME_MODULE}";`,
+      'import { jsonParse, jsonStringify, jsonParseV, jsonStringifyV } from "./kiso-json";',
       '',
     ];
     const globalDecls = [...this.globals].map((g) => `let g_${mangle(g)}: Value = NIL;`);
@@ -787,5 +797,5 @@ class Emitter {
 }
 
 export function emitAs(mod: LModule, opts: EmitOptions = {}): string {
-  return new Emitter(mod).emit(opts.exports ?? []);
+  return new Emitter(mod).emit(opts.exports ?? [], opts.worker);
 }

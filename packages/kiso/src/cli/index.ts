@@ -17,6 +17,8 @@ Options:
   --target <js|as>        Backend: js (default) or as (AssemblyScript, experimental)
   --export <name>         (as) Require entry point <name>; repeatable
   -o, --out <file>        (build) Output .wasm path
+  --worker                (build) Serverless: emit <name>.wasm + worker.js (Cloudflare Workers)
+  --handler <name>        (build --worker) Request handler def (default: handle)
   --runtime <gc>          (build/run) minimal (default), stub or incremental
   -V, --version           Show version
   -h, --help              Show this help
@@ -27,6 +29,7 @@ Examples:
   kiso compile --source-map src/
   kiso compile --out-dir dist/ src/
   kiso build app.cljs -o app.wasm
+  kiso build api.cljs --worker --out-dir dist/
   kiso run app.cljs -- arg1 arg2
 `;
 
