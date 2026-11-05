@@ -10,10 +10,10 @@ Session handover document. Read at session start.
 
 ## Current Task
 
-AssemblyScript backend, M2 (vertical slice): `runtime-as/` skeleton + `emitter-as.ts` for
-`defn`/arithmetic/`if`/`let`/`loop`/`println`, run on Node, differential test + benchmark harness.
-M0/M1 done (design `.dev/design/08-assemblyscript-backend.md`, decisions D13–D17, lowering pass in
-`packages/kiso/src/codegen-as/`). Needs `assemblyscript` (asc) as a dev dependency.
+AssemblyScript backend: M0–M2 done (design `.dev/design/08-assemblyscript-backend.md`, D13–D18; code in
+`packages/kiso/src/codegen-as/` and `packages/kiso/as-runtime/`). Benchmark gate (D18) shows boxed `Value`
+is 7–38x slower than JS on fib(32); decide numeric representation (tagged/unboxed or numeric specialization)
+before starting M3 (collections). Benchmark: `KISO_BENCH=1 npx vitest run test/bench/as-vs-js.test.ts`.
 
 ## Task Queue
 

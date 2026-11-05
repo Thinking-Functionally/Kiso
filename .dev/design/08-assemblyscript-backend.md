@@ -1,6 +1,16 @@
 # 08 — AssemblyScript Backend
 
-Status: **M0 and M1 complete** (lowering). The AS emitter (M2) is not implemented yet.
+Status: **M0–M2 complete** (lowering + vertical-slice emitter). M3 is gated on the numeric-representation decision below.
+
+## M2 Outcome
+
+- `as-runtime/kiso-runtime.ts` (D18): boxed `Value` hierarchy, core numeric ops, `=`, `println`/`str`, `throwValue`, `Fn` base with `call0..3`/`invoke`.
+- `codegen-as/emitter-as.ts`: `LModule` → AS source. Supported: literals (nil/bool/number/string/keyword), `def`, `defn`/`fn` (multi-arity, closures, `letfn`), `if`/`let`/`loop`/`recur`, `+ - * / mod rem inc dec < > <= >= = not not= zero? pos? neg? println str`. Everything else is a compile error with a milestone hint (collections M3, deftype/protocols M4, ns requires M5).
+- Exports: `^:export` fns through an f64 ABI (`export function fib(a0: f64): f64`), `-main` as `main(): void`.
+- `compileAs` now returns `{code}`; tests build with the asc API (`test/codegen-as/helpers/build-wasm.ts`) and run in Node.
+- Differential harness (`helpers/differential.ts`): 12 programs print identically on JS and wasm.
+- Also fixed a pre-existing analyzer bug: `(defn ^:export f …)` failed (`fn* requires params vector`).
+- **Benchmark gate**: fib(32) JS 13 ms vs wasm 97–499 ms depending on AS runtime (see D18). Boxed numbers are the bottleneck; resolve before M3.
 
 ## M1 Outcome
 

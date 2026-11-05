@@ -311,6 +311,20 @@ No `as-raw` escape hatch. Differential tests cover only features supported by bo
 
 **Rationale**: Predictable behavior; `as-raw` would bypass subset checks and couple user code to runtime internals.
 
+### D18: AS Value Model — Boxed `Value` Class Hierarchy (baseline)
+
+**Date**: 2026-11-05
+
+**Decision**: M2 represents every Kiso value as a heap `Value` (singletons NIL/TRUE/FALSE; `Num`, `Str`, `Kw`,
+`Fn`). Each `LFunction` is a class extending `Fn` with captures as fields and `callN`/`invoke` dispatch.
+Runtime lives in `packages/kiso/as-runtime/` (outside `src/`, shipped via package `files`); `assemblyscript` is a
+devDependency only. Host output via `@external("kiso","write")`; the host supplies memory (`--importMemory`).
+
+**Benchmark gate (M2.5, fib(32), Node, `test/bench/as-vs-js.test.ts`)**: JS backend 13 ms; wasm incremental
+499 ms (6.5 KB), minimal 200 ms (4.0 KB), stub 97 ms (2.1 KB). Boxed numbers make wasm 7–38x slower than JS here.
+**Consequence**: M3 must first address numeric representation (e.g. unboxed f64/i64 tagged values, or type
+specialization of numeric fns) before adding collections. Do not claim a wasm perf advantage until fixed.
+
 ## Known Issues
 
 All previously tracked issues (I1–I6) have been resolved. See `archive/bugs-fixed.md` for details.
