@@ -13,6 +13,7 @@ export type CliArgs =
       target: 'js' | 'as';
       exports: string[];
     }
+  | { command: 'serve'; file: string; runtime: GcRuntime; exports: string[]; handler: string; port: number }
   | {
       command: 'build';
       file: string;
@@ -43,6 +44,7 @@ export function parseArgs(argv: string[]): CliArgs {
       runtime: { type: 'string' },
       worker: { type: 'boolean', default: false },
       handler: { type: 'string' },
+      port: { type: 'string' },
     },
   });
 
@@ -52,7 +54,7 @@ export function parseArgs(argv: string[]): CliArgs {
   const command = positionals[0];
   if (!command) return { command: 'help' };
 
-  if (command === 'build' || command === 'run') {
+  if (command === 'build' || command === 'run' || command === 'serve') {
     const file = positionals[1];
     if (!file || positionals.length > 2) throw new Error(`${command} requires exactly one .cljs file`);
     const runtime = (values.runtime as string | undefined) ?? 'minimal';
@@ -60,6 +62,11 @@ export function parseArgs(argv: string[]): CliArgs {
       throw new Error(`Unknown --runtime: ${runtime} (expected minimal, stub or incremental)`);
     }
     const exports = (values.export as string[] | undefined) ?? [];
+    if (command === 'serve') {
+      const port = Number((values.port as string | undefined) ?? 8787);
+      if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error(`Invalid --port: ${values.port}`);
+      return { command, file, runtime, exports, handler: (values.handler as string | undefined) ?? 'handle', port };
+    }
     return command === 'build'
       ? {
           command,

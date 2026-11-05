@@ -34,7 +34,7 @@ export function compileCommand(options: CompileCommandOptions): CompileCommandRe
       });
 
       const outExt = options.target === 'as' ? '.as.ts' : '.js';
-      const jsName = basename(file).replace(/\.cljs$/, outExt);
+      const jsName = basename(file).replace(/\.clj[sc]$/, outExt);
       const outDirPath = options.outDir ?? dirname(file);
       mkdirSync(outDirPath, { recursive: true });
       const outFile = join(outDirPath, jsName);

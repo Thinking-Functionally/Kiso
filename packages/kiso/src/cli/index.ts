@@ -1,6 +1,6 @@
 import { parseArgs } from './args.js';
 import { compileCommand } from './compile-command.js';
-import { buildCommand, runCommand } from './build-command.js';
+import { buildCommand, runCommand, serveCommand } from './build-command.js';
 import { version } from '../version.js';
 
 const HELP_TEXT = `Usage: kiso <command> [options]
@@ -8,6 +8,7 @@ const HELP_TEXT = `Usage: kiso <command> [options]
 Commands:
   compile <file|dir...>   Compile .cljs files (JavaScript by default)
   build <file>            Compile one .cljs file to WebAssembly (needs assemblyscript)
+  serve <file>            Serve a --worker style handler over HTTP on Node (--port, default 8787)
   run <file> [-- args]    Build to WebAssembly and run -main on Node
 
 Options:
@@ -52,6 +53,9 @@ export async function main(argv: string[]): Promise<void> {
     }
     case 'build':
       await buildCommand(args);
+      break;
+    case 'serve':
+      await serveCommand(args);
       break;
     case 'run':
       process.exitCode = await runCommand(args);

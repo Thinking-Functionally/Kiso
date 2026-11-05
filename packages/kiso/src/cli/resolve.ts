@@ -15,7 +15,7 @@ export function resolveTargets(targets: string[]): string[] {
     } else if (stat.isDirectory()) {
       const entries = readdirSync(target, { recursive: true, encoding: 'utf-8' });
       for (const entry of entries) {
-        if (entry.endsWith('.cljs')) {
+        if ((entry.endsWith('.cljs') || entry.endsWith('.cljc'))) {
           files.push(join(target, entry));
         }
       }

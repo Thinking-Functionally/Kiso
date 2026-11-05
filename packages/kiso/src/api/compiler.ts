@@ -2,6 +2,7 @@
 //
 // Single-entry-point for compiling ClojureScript to JavaScript.
 
+import { linkModules, type NsLoader } from '../codegen-as/modules.js';
 import { readStr, readAllStr } from '../reader/reader.js';
 import { Analyzer } from '../analyzer/analyzer.js';
 import { emit, emitModuleWithMappings, type CodegenHook } from '../codegen/emitter.js';
@@ -17,6 +18,10 @@ export type CompileOptions = {
   codegenHooks?: Record<string, CodegenHook>;
   /** Backend to generate code with. Defaults to 'js'. */
   target?: 'js' | 'as';
+  /** Reader-conditional features, most preferred first. Defaults: JS `['cljs']` for .cljc, AS `['as','cljs']`. */
+  features?: string[];
+  /** AS target only: resolves project-local `(:require ...)` namespaces by inlining them. */
+  loadNs?: NsLoader;
   /** AS target only: entry points that must be defined. */
   exports?: string[];
   /** AS target only: serverless handler def name (exported as `kiso_handle`). */
@@ -89,7 +94,10 @@ export function compile(source: string, options?: CompileOptions): CompileResult
 
   let forms: Form[];
   try {
-    forms = readAllStr(source);
+    const isCljc = filename?.endsWith('.cljc') ?? false;
+    const features = options?.features ?? (options?.target === 'as' ? ['as', 'cljs'] : isCljc ? ['cljs'] : null);
+    forms = readAllStr(source, features);
+    if (options?.target === 'as' && options.loadNs) forms = linkModules(forms, options.loadNs, features ?? []);
   } catch (err) {
     throw wrapError(err, 'read', filename);
   }

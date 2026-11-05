@@ -40,19 +40,60 @@ export class ReaderError extends Error {
 
 const MAX_NESTING_DEPTH = 1024;
 
+/**
+ * Reader-conditional feature priority, most preferred first. A branch is chosen by the
+ * first feature (in this order) that appears in the conditional, then `:default`.
+ */
+export type ReaderFeatures = readonly string[];
+
 class Reader {
   private tokenizer: Tokenizer;
   private peeked: Token | null = null;
   private depth = 0;
+  private queue: Form[] = [];
 
-  constructor(source: string) {
+  constructor(source: string, private features: ReaderFeatures | null = null) {
     this.tokenizer = new Tokenizer(source);
   }
 
   read(): Form | null {
-    const token = this.nextToken();
-    if (token.kind === 'eof') return null;
-    return this.readForm(token);
+    for (;;) {
+      if (this.queue.length > 0) return this.queue.shift()!;
+      const token = this.nextToken();
+      if (token.kind === 'eof') return null;
+      if (token.kind === 'hash_question' || token.kind === 'hash_question_at') {
+        this.queue.push(...this.readCond(token));
+        continue;
+      }
+      return this.readForm(token);
+    }
+  }
+
+  /** `#?(...)` / `#?@(...)`: returns the forms to splice in (0 or 1 for `#?`, n for `#?@`). */
+  private readCond(token: Token): Form[] {
+    if (this.features === null) throw this.error('Reader conditionals are not enabled (.cljc only)', token);
+    const open = this.nextToken();
+    if (open.kind !== 'lparen') throw this.error('Expected ( after #?', open);
+    const items = this.readDelimited('rparen');
+    if (items.length % 2 !== 0) throw this.error('Reader conditional requires an even number of forms', token);
+    const find = (name: string): Form | undefined => {
+      for (let i = 0; i < items.length; i += 2) {
+        const k = items[i]!.data;
+        if (k.type !== 'keyword') throw this.error('Reader conditional feature must be a keyword', token);
+        if (k.name === name) return items[i + 1];
+      }
+      return undefined;
+    };
+    let chosen: Form | undefined;
+    for (const f of [...this.features, 'default']) {
+      chosen = find(f);
+      if (chosen) break;
+    }
+    if (!chosen) return [];
+    if (token.kind === 'hash_question') return [chosen];
+    const d = chosen.data;
+    if (d.type !== 'list' && d.type !== 'vector') throw this.error('#?@ requires a list or vector', token);
+    return [...(d.items as Form[])];
   }
 
   readAll(): Form[] {
@@ -105,6 +146,13 @@ class Reader {
       case 'hash': return this.readTagged(token);
       case 'backtick': return this.readWrapped('syntax-quote', token);
       case 'hash_colon': return this.readNsMap(token);
+      case 'hash_question': {
+        const forms = this.readCond(token);
+        if (forms.length === 1) return forms[0]!;
+        const following = this.read();
+        return following ?? makeNil(token.line, token.col);
+      }
+      case 'hash_question_at': throw this.error('#?@ is only allowed inside a collection or at top level', token);
       case 'rparen': throw this.error('Unmatched )', token);
       case 'rbracket': throw this.error('Unmatched ]', token);
       case 'rbrace': throw this.error('Unmatched }', token);
@@ -295,7 +343,8 @@ class Reader {
           throw this.error('EOF while reading collection', tok);
         }
         if (tok.kind === closing) break;
-        items.push(this.readForm(tok));
+        if (tok.kind === 'hash_question' || tok.kind === 'hash_question_at') items.push(...this.readCond(tok));
+        else items.push(this.readForm(tok));
       }
     } finally {
       this.depth--;
@@ -433,8 +482,8 @@ export function readStr(source: string): Form | null {
   return new Reader(source).read();
 }
 
-export function readAllStr(source: string): Form[] {
-  return new Reader(source).readAll();
+export function readAllStr(source: string, features: ReaderFeatures | null = null): Form[] {
+  return new Reader(source, features).readAll();
 }
 
 // -- Internal helpers --
