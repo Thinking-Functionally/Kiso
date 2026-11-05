@@ -354,6 +354,19 @@ vec/reduce/update/get-in/max/min/pr-str/prn and predicates. Not yet: sets, lists
 map assoc+get 200k JS 58 / wasm stub 24, minimal 32, incremental 77. Default build profile is `minimal` (`stub` for short-lived
 CLI/serverless invocations); `incremental` is slower than JS on allocation-heavy code.
 
+### D21: AS Seqs, Sets and Rest Params (M3.5)
+
+**Date**: 2026-11-05
+
+**Decision**: Seqs are **eager**: `SetV` wraps a `MapV`; lists are list-flagged `Vec`s; `rest`/`next`/`seq`/`cons`/`map`/`filter`/
+`take`/`drop`/`range`/`concat`/`into`/`reverse` return fresh list-flagged `Vec`s (O(n), no infinite seqs). `items()` gives a
+read-only view of any seqable. Rest params compile to a `rest<N>` method plus a trailing `args.length >= N` dispatch; the rest
+value is nil or a list. `apply`, `ex-info`/`ex-message`/`ex-data`, `list`, `hash-set`, `set`, `disj`, `some`, `every?` added.
+`dotimes` works because the lowering accepts exactly its two `js*` counters (`i < n`, `i + 1`); all other `js*` stays rejected.
+**Still rejected**: `try`/`catch` (wasm/AS has no catchable exceptions; `ex-info` aborts), `for` (uses `.push` js*), lazy seqs,
+`sort`, deftype/defrecord/protocols (M4.5). Several of these behave correctly in AS while the JS backend gets them wrong
+(`apply` with leading args, 2-coll `map`, `rest`), so those tests are AS-only.
+
 ## Known Issues
 
 All previously tracked issues (I1–I6) have been resolved. See `archive/bugs-fixed.md` for details.

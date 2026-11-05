@@ -6,7 +6,7 @@
 // - multi-arity / variadic fns become explicit arities (M1.9)
 
 import type { Node, FnNode, ProtocolImplNode, CaseNode } from '../analyzer/node.js';
-import { checkSupported, AsUnsupportedError } from './supported.js';
+import { checkSupported, AsUnsupportedError, rewriteDotimesRaw } from './supported.js';
 import type {
   LModule, LFunction, LArity, LExpr, LStmt, LVar, LClosure, LProtocolImpl, LCatch,
 } from './lowered.js';
@@ -128,6 +128,11 @@ function expr(node: Node, out: LStmt[], ctx: Ctx): LExpr {
       return { type: 'keyword', ns: node.ns, name: node.name };
     case 'var-ref':
       return ctx.fs.resolve(node.name);
+    case 'js-raw': {
+      const rewritten = rewriteDotimesRaw(node.code);
+      if (!rewritten) throw new Error(`js-raw is not supported in AssemblyScript: ${node.code}`);
+      return expr(rewritten, out, ctx);
+    }
     case 'vector':
       return { type: 'vector', items: exprs(node.items, out, ctx) };
     case 'set':

@@ -20,7 +20,7 @@ export type EmitOptions = {
 };
 
 // Core ops compiled to direct runtime calls. `value` returns Value, `bool` returns native bool.
-type CoreOp = { kind: 'value' | 'bool'; fn: string; arity: number | number[] };
+type CoreOp = { kind: 'value' | 'bool'; fn: string; arity: number | number[]; sfx?: boolean };
 const CORE_OPS: Record<string, CoreOp> = {
   '/': { kind: 'value', fn: 'div', arity: 2 },
   inc: { kind: 'value', fn: 'inc', arity: 1 },
@@ -61,9 +61,34 @@ const CORE_OPS: Record<string, CoreOp> = {
   identity: { kind: 'value', fn: 'identity', arity: 1 },
   reduce: { kind: 'value', fn: 'kreduce', arity: [2, 3] },
   'get-in': { kind: 'value', fn: 'kgetIn', arity: [2, 3] },
+  'set?': { kind: 'bool', fn: 'isSet', arity: 1 },
+  'list?': { kind: 'bool', fn: 'isList', arity: 1 },
+  'seq?': { kind: 'bool', fn: 'isSeq', arity: 1 },
+  'every?': { kind: 'bool', fn: 'kevery', arity: 2 },
+  set: { kind: 'value', fn: 'kset', arity: 1 },
+  disj: { kind: 'value', fn: 'kdisj', arity: 2 },
+  seq: { kind: 'value', fn: 'kseq', arity: 1 },
+  rest: { kind: 'value', fn: 'krest', arity: 1 },
+  next: { kind: 'value', fn: 'knext', arity: 1 },
+  cons: { kind: 'value', fn: 'kcons', arity: 2 },
+  empty: { kind: 'value', fn: 'kemptyOf', arity: 1 },
+  reverse: { kind: 'value', fn: 'kreverse', arity: 1 },
+  take: { kind: 'value', fn: 'ktake', arity: 2 },
+  drop: { kind: 'value', fn: 'kdrop', arity: 2 },
+  map: { kind: 'value', fn: 'kmap', arity: [2, 3], sfx: true },
+  mapv: { kind: 'value', fn: 'kmapv', arity: 2 },
+  filter: { kind: 'value', fn: 'kfilter', arity: 2 },
+  filterv: { kind: 'value', fn: 'kfilterv', arity: 2 },
+  remove: { kind: 'value', fn: 'kremove', arity: 2 },
+  some: { kind: 'value', fn: 'ksome', arity: 2 },
+  into: { kind: 'value', fn: 'kinto', arity: 2 },
+  range: { kind: 'value', fn: 'krange', arity: [1, 2, 3], sfx: true },
+  'ex-info': { kind: 'value', fn: 'kexInfo', arity: 2 },
+  'ex-message': { kind: 'value', fn: 'kexMessage', arity: 1 },
+  'ex-data': { kind: 'value', fn: 'kexData', arity: 1 },
 };
 // Runtime fns taking all arguments as one Array<Value>.
-const ARRAY_OPS: Record<string, string> = { vector: 'vector', 'hash-map': 'hashMap', 'pr-str': 'prStr', prn: 'prn', println: 'println', str: 'str' };
+const ARRAY_OPS: Record<string, string> = { vector: 'vector', 'hash-map': 'hashMap', 'pr-str': 'prStr', prn: 'prn', println: 'println', str: 'str', list: 'klist', 'hash-set': 'hashSet', concat: 'kconcat' };
 
 const RUNTIME_IMPORTS = [
   'Value', 'Fn', 'Num', 'Str', 'Kw', 'NIL', 'TRUE', 'FALSE', 'bool_', 'truthy', 'asFn', 'arityError', 'throwValue', 'toF64', 'mkNum',
@@ -73,6 +98,9 @@ const RUNTIME_IMPORTS = [
   'kdissoc', 'kcontains', 'kkeys', 'kvals', 'kfirst', 'ksecond', 'klast', 'kpeek', 'kpop', 'kvec', 'kmax', 'kmin',
   'callV0', 'callV1', 'callV2', 'callV3', 'callVN', 'kreduce2', 'kreduce3', 'kupdate', 'kgetIn', 'kgetIn3',
   'println', 'prn', 'prStr', 'str',
+  'SetV', 'ExInfo', 'EMPTY_SET', 'mkSet', 'hashSet', 'kset', 'kdisj', 'isSet', 'isList', 'isSeq', 'items', 'klist', 'kseq', 'krest', 'knext',
+  'kcons', 'kemptyOf', 'kreverse', 'kconcat', 'ktake', 'kdrop', 'kmap2', 'kmap3', 'kmapv', 'kfilter', 'kfilterv', 'kremove', 'ksome',
+  'kevery', 'kinto', 'krange1', 'krange2', 'krange3', 'kapply', 'kexInfo', 'kexMessage', 'kexData', 'restOf',
 ];
 
 function unsupported(construct: string, reason: string): never {
@@ -181,8 +209,14 @@ class Emitter {
       dispatch.push(`      case ${n}: return this.call${n}(${names.map((_, i) => `args[${i}]`).join(', ')});`);
     }
     if (methods.length === 0) return unsupported(`var ${name}`, 'not defined in this module and not a supported core function');
+    const foldFn = { '+': 'add', '-': 'sub', '*': 'mul', max: 'kmax', min: 'kmin' }[name];
+    const variadic = ARRAY_OPS[name]
+      ? [`    return ${ARRAY_OPS[name]}(args);`]
+      : foldFn
+        ? [`    if (args.length > ${MAX_DIRECT}) {`, '      let acc = args[0];', `      for (let i = 1; i < args.length; i++) acc = ${foldFn}(acc, args[i]);`, '      return acc;', '    }']
+        : [];
     this.coreClasses.push(
-      [`class ${cls} extends Fn {`, ...methods, '  invoke(args: Array<Value>): Value {', '    switch (args.length) {', ...dispatch, '    }', '    return arityError();', '  }', '}'].join('\n'),
+      [`class ${cls} extends Fn {`, ...methods, '  invoke(args: Array<Value>): Value {', '    switch (args.length) {', ...dispatch, '    }', ...variadic, '    return arityError();', '  }', '}'].join('\n'),
     );
     return this.constant(key, `new ${cls}()`);
   }
@@ -281,6 +315,7 @@ class Emitter {
   private tableCall(name: string, a: string[]): string {
     const op = CORE_OPS[name];
     if (op && this.arityOk(op, a.length)) {
+      if (op.sfx) return `${op.fn}${a.length}(${a.join(', ')})`;
       if (name === 'reduce') return `${op.fn}${a.length}(${a.join(', ')})`;
       if (name === 'get-in') return `${a.length === 2 ? 'kgetIn' : 'kgetIn3'}(${a.join(', ')})`;
       const call = `${op.fn}(${a.join(', ')})`;
@@ -321,6 +356,9 @@ class Emitter {
       case 'get':
         if (a.length === 3) return `kget3(${a[0]}, ${a[1]}, ${a[2]})`;
         return this.tableCall(name, a);
+      case 'apply':
+        if (a.length >= 2) return `kapply(${a[0]}, [${a.slice(1, -1).join(', ')}], ${a[a.length - 1]})`;
+        break;
       case 'update':
         if (a.length >= 3) return `kupdate(${a[0]}, ${a[1]}, ${a[2]}, [${a.slice(3).join(', ')}])`;
         break;
@@ -356,7 +394,7 @@ class Emitter {
       case 'map':
         return e.keys.length === 0 ? 'EMPTY_MAP' : `mkMap([${e.keys.flatMap((k, i) => [this.expr(k), this.expr(e.vals[i]!)]).join(', ')}])`;
       case 'set':
-        return unsupported('set literal', 'sets are not part of the M3 subset');
+        return `mkSet([${this.args(e.items).join(', ')}])`;
       case 'new':
         return unsupported('new', 'deftype/defrecord arrive in M4');
       case 'reify':
@@ -421,7 +459,7 @@ class Emitter {
         return lines;
       }
       case 'try':
-        return unsupported('try', 'exceptions arrive in M3');
+        return unsupported('try', 'WebAssembly/AssemblyScript has no catchable exceptions; use ex-info (aborts) and return values for errors');
       case 'type-def':
         return unsupported(s.kind, 'deftype/defrecord arrive in M4');
       case 'extend-type':
@@ -442,26 +480,32 @@ class Emitter {
       lines.push(`  constructor(${caps.map((c) => `public ${c}: Value`).join(', ')}) {`, '    super();', '  }');
     }
     const dispatch: string[] = [];
+    let restDispatch = '';
     for (const ar of fn.arities) {
-      if (ar.restParam !== null) unsupported('rest parameter', '& rest arrives with collections in M3');
       const n = ar.params.length;
-      const params = ar.params.map((p) => `l_${mangle(p)}: Value`).join(', ');
-      const method = n <= MAX_DIRECT ? `call${n}` : `ar${n}`;
+      const rest = ar.restParam !== null;
+      const allParams = rest ? [...ar.params, ar.restParam!] : ar.params;
+      const params = allParams.map((p) => `l_${mangle(p)}: Value`).join(', ');
+      const method = rest ? `rest${n}` : n <= MAX_DIRECT ? `call${n}` : `ar${n}`;
       const body: string[] = [];
-      if (this.native.has(fn.id)) {
+      if (!rest && this.native.has(fn.id)) {
         const guard = ar.params.map((p) => `l_${mangle(p)} instanceof Num`).join(' && ');
         const argv = ar.params.map((p) => `changetype<Num>(l_${mangle(p)}).v`).join(', ');
         body.push(`    if (${guard}) return mkNum(${nativeName(fn)}(${argv}));`);
       }
-      this.nums = inferNumericLocals(ar.body, ar.params, this.globals);
+      this.nums = inferNumericLocals(ar.body, allParams, this.globals);
       body.push(...this.stmts(ar.body, '    '));
       const last = ar.body[ar.body.length - 1];
       if (!last || (last.type !== 'return' && last.type !== 'loop')) body.push('    return NIL;');
       else if (last.type === 'loop') body.push('    return NIL;');
       lines.push(`  ${method}(${params}): Value {`, ...body, '  }');
-      dispatch.push(`      case ${n}: return this.${method}(${ar.params.map((_, i) => `args[${i}]`).join(', ')});`);
+      if (rest) {
+        restDispatch = `    if (args.length >= ${n}) return this.${method}(${[...ar.params.map((_, i) => `args[${i}]`), `restOf(args, ${n})`].join(', ')});`;
+      } else {
+        dispatch.push(`      case ${n}: return this.${method}(${ar.params.map((_, i) => `args[${i}]`).join(', ')});`);
+      }
     }
-    lines.push('  invoke(args: Array<Value>): Value {', '    switch (args.length) {', ...dispatch, '    }', '    return arityError();', '  }', '}');
+    lines.push('  invoke(args: Array<Value>): Value {', '    switch (args.length) {', ...dispatch, '    }', ...(restDispatch ? [restDispatch] : []), '    return arityError();', '  }', '}');
     return lines;
   }
 

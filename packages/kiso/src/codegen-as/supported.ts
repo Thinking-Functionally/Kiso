@@ -23,6 +23,17 @@ function unsupported(construct: string, idx: number, reason: string): never {
   throw new AsUnsupportedError(construct, idx, reason);
 }
 
+/** The only raw JS the AS backend accepts: the counters that the `dotimes` macro expands to. */
+export function rewriteDotimesRaw(code: string): Node | null {
+  const local = (name: string): Node => ({ type: 'var-ref', name, local: true });
+  const core = (name: string): Node => ({ type: 'var-ref', name, local: false });
+  const lt = /^(\w+) < (\w+)$/.exec(code);
+  if (lt) return { type: 'invoke', fn: core('<'), args: [local(lt[1]!), local(lt[2]!)] };
+  const inc = /^(\w+) \+ 1$/.exec(code);
+  if (inc) return { type: 'invoke', fn: core('+'), args: [local(inc[1]!), { type: 'literal', value: 1, jsType: 'number' }] };
+  return null;
+}
+
 function checkImpls(impls: ProtocolImplNode[], idx: number): void {
   for (const impl of impls) {
     checkNode(impl.protocol, idx);
@@ -34,6 +45,7 @@ function checkNode(node: Node, idx: number): void {
   const walk = (n: Node): void => checkNode(n, idx);
   switch (node.type) {
     case 'js-raw':
+      if (rewriteDotimesRaw(node.code)) return;
       return unsupported('js-raw', idx, 'raw JavaScript cannot be compiled to AssemblyScript');
     case 'js-array':
       return unsupported('js-array', idx, 'JS array literals are JS-only');

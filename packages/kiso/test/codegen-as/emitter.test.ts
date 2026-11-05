@@ -14,8 +14,8 @@ describe('emitter-as: source shape', () => {
   it('exports ^:export fns through the f64 ABI', () => {
     expect(asOf('(defn ^:export sq [x] (* x x))')).toContain('export function sq(a0: f64): f64');
   });
-  it('rejects sets with a clear message', () => {
-    expect(() => asOf('(def v #{1 2})')).toThrow(/set literal/);
+  it('rejects deftype with a clear message', () => {
+    expect(() => asOf('(deftype P [x])')).toThrow(/deftype/);
   });
 });
 

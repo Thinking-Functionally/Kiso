@@ -1,6 +1,6 @@
 # 08 — AssemblyScript Backend
 
-Status: **M0–M3 complete** (lowering, emitter, numeric specialization, core collections). Next: M4 (`host/` + CLI target).
+Status: **M0–M3.5 complete** (lowering, emitter, numeric specialization, core collections). Next: M4 (`host/` + CLI target).
 
 ## M3 Outcome
 
@@ -182,7 +182,9 @@ Support status is tracked in `.dev/status/vars.yaml` (new `as` field: `full` / `
 | M1 | `lower.ts`: JS-only rejection, closure capture, tail analysis, flattening |
 | M2 | Vertical slice: `defn` + arithmetic + `println` → wasm → run on Node; differential test + benchmark harness |
 | M3 | Core data structures (vector, map, keyword, `str`) |
+| M3.5 | Sets, lists, eager seqs, rest params, `apply`, `dotimes`, `ex-info` (D21) |
 | M4 | `host/` + CLI target (Node WASI) |
+| M4.5 | deftype/defrecord/protocols (lazy seq and `try` remain deferred) |
 | M5 | Serverless target (Cloudflare Workers) |
 | M6 | Full-stack: shared `.cljc` (`#?(:cljs … :as …)`), serialization, API contract, sample app |
 
