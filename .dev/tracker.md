@@ -325,6 +325,16 @@ devDependency only. Host output via `@external("kiso","write")`; the host suppli
 **Consequence**: M3 must first address numeric representation (e.g. unboxed f64/i64 tagged values, or type
 specialization of numeric fns) before adding collections. Do not claim a wasm perf advantage until fixed.
 
+### D19: Numeric Specialization in the AS Emitter
+
+**Date**: 2026-11-05
+
+**Decision**: Single-arity, capture-free functions made only of f64 arithmetic/comparisons, `if`/`let`/`loop`/`recur`
+and self-calls get a native `nf_<id>(f64…): f64` twin (`codegen-as/numeric.ts`). The boxed `Fn` class calls it when
+all args are `Num`, else falls back to the generic body; exports call it directly. Fixes the D18 gate:
+fib(32) JS 14 ms vs wasm 11 ms (incremental) / 10 ms (minimal) / 4 ms (stub). Limits: non-numeric code (collections,
+strings, polymorphic calls) still pays boxing; a general unboxed representation is deferred until M3 benchmarks show need.
+
 ## Known Issues
 
 All previously tracked issues (I1–I6) have been resolved. See `archive/bugs-fixed.md` for details.

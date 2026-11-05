@@ -10,7 +10,7 @@ Status: **M0–M2 complete** (lowering + vertical-slice emitter). M3 is gated on
 - `compileAs` now returns `{code}`; tests build with the asc API (`test/codegen-as/helpers/build-wasm.ts`) and run in Node.
 - Differential harness (`helpers/differential.ts`): 12 programs print identically on JS and wasm.
 - Also fixed a pre-existing analyzer bug: `(defn ^:export f …)` failed (`fn* requires params vector`).
-- **Benchmark gate**: fib(32) JS 13 ms vs wasm 97–499 ms depending on AS runtime (see D18). Boxed numbers are the bottleneck; resolve before M3.
+- **Benchmark gate**: initially boxed numbers made wasm 7–38x slower (D18); numeric specialization (D19) brings fib(32) to JS 14 ms vs wasm 4–11 ms. M3 may start; re-benchmark collection-heavy code there.
 
 ## M1 Outcome
 

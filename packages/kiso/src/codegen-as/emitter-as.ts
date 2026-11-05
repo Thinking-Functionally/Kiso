@@ -6,6 +6,8 @@
 
 import type { LExpr, LFunction, LModule, LStmt, LVar, LClosure } from './lowered.js';
 import { AsUnsupportedError } from './supported.js';
+import { mangle } from './mangle.js';
+import { NumericCheck, emitNative, nativeName } from './numeric.js';
 
 export const RUNTIME_MODULE = './kiso-runtime';
 
@@ -39,16 +41,6 @@ function unsupported(construct: string, reason: string): never {
   throw new AsUnsupportedError(construct, -1, reason);
 }
 
-/** Escape a Clojure name into a valid AS identifier fragment (injective). */
-export function mangle(name: string): string {
-  let out = '';
-  for (const ch of name) {
-    if (/[A-Za-z0-9]/.test(ch)) out += ch;
-    else out += `_${ch.codePointAt(0)!.toString(16)}_`;
-  }
-  return out;
-}
-
 export function wasmExportName(name: string): string {
   const stripped = name.replace(/^-+/, '');
   const n = stripped.replace(/[^A-Za-z0-9_]/g, '_');
@@ -60,10 +52,12 @@ class Emitter {
   private constDecls: string[] = [];
   private globals = new Set<string>();
   private fnById = new Map<number, LFunction>();
+  private native = new Set<number>();
 
   constructor(private mod: LModule) {
     for (const f of mod.functions) this.fnById.set(f.id, f);
     this.collectGlobals(mod.body);
+    for (const f of mod.functions) if (new NumericCheck(f, this.globals).ok()) this.native.add(f.id);
   }
 
   private collectGlobals(stmts: LStmt[]): void {
@@ -307,7 +301,13 @@ class Emitter {
       const n = ar.params.length;
       const params = ar.params.map((p) => `l_${mangle(p)}: Value`).join(', ');
       const method = n <= MAX_DIRECT ? `call${n}` : `ar${n}`;
-      const body = this.stmts(ar.body, '    ');
+      const body: string[] = [];
+      if (this.native.has(fn.id)) {
+        const guard = ar.params.map((p) => `l_${mangle(p)} instanceof Num`).join(' && ');
+        const argv = ar.params.map((p) => `changetype<Num>(l_${mangle(p)}).v`).join(', ');
+        body.push(`    if (${guard}) return new Num(${nativeName(fn)}(${argv}));`);
+      }
+      body.push(...this.stmts(ar.body, '    '));
       const last = ar.body[ar.body.length - 1];
       if (!last || (last.type !== 'return' && last.type !== 'loop')) body.push('    return NIL;');
       else if (last.type === 'loop') body.push('    return NIL;');
@@ -332,6 +332,9 @@ class Emitter {
       return a.length <= MAX_DIRECT ? `asFn(g_${mangle(name)}).call${a.length}(${a.join(', ')})` : `asFn(g_${mangle(name)}).invoke([${a.join(', ')}])`;
     };
     const names = ar.params.map((_, i) => `a${i}`);
+    if (this.native.has(fn.id) && ar === fn.arities[0]) {
+      return [`export function ${wasm}(${names.map((n) => `${n}: f64`).join(', ')}): f64 {`, `  return ${nativeName(fn)}(${names.join(', ')});`, '}'];
+    }
     if (name === '-main' && ar.params.length === 0) {
       return [`export function ${wasm}(): void {`, `  ${call([])};`, '}'];
     }
@@ -339,6 +342,7 @@ class Emitter {
   }
 
   emit(exports: string[]): string {
+    const natives = this.mod.functions.filter((f) => this.native.has(f.id)).flatMap((f) => [...emitNative(f), '']);
     const fnClasses = this.mod.functions.flatMap((f) => [...this.fnClass(f), '']);
     const init = this.stmts(this.mod.body, '  ');
     const wrappers = exports.flatMap((n) => [...this.exportWrapper(n), '']);
@@ -352,6 +356,9 @@ class Emitter {
       ...this.constDecls,
       ...globalDecls,
       '',
+      'function nmod(a: f64, b: f64): f64 {\n  return ((a % b) + b) % b;\n}',
+      '',
+      ...natives,
       ...fnClasses,
       'function __kiso_init(): void {',
       ...init,
