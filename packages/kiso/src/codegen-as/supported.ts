@@ -14,7 +14,7 @@ export class AsUnsupportedError extends Error {
   }
 }
 
-export function lowerModule(nodes: Node[]): Node[] {
+export function checkSupported(nodes: Node[]): Node[] {
   nodes.forEach((n, i) => checkNode(n, i));
   return nodes;
 }
