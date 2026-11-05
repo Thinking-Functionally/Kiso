@@ -367,6 +367,19 @@ value is nil or a list. `apply`, `ex-info`/`ex-message`/`ex-data`, `list`, `hash
 `sort`, deftype/defrecord/protocols (M4.5). Several of these behave correctly in AS while the JS backend gets them wrong
 (`apply` with leading args, 2-coll `map`, `rest`), so those tests are AS-only.
 
+### D22: AS Host Interface and CLI Target (M4)
+
+**Date**: 2026-11-05
+
+**Decision**: (1) `host/args|env|read-file|write-file|stdin|exit|now` lower to runtime fns over a wasm import namespace `host`
+(`argc/arg/env/read_file/write_file/stdin/exit/now`); output stays on `kiso.write`. Strings cross the boundary as AS string
+pointers; the host allocates results with the exported `__new` (`--exportRuntime`). (2) Because host calls may run in top-level
+`def`s, the module is built with `--exportStart _start` and the loader calls `_start` after it holds the instance. (3) `src/host/node.ts`
+(`instantiateKiso`) is the shipped Node loader; `host/exit` unwinds with `ExitSignal` and becomes the exit code. (4) `src/codegen-as/build.ts`
+drives `asc`; `assemblyscript` is an optional peer dependency (dynamic import, clear error if missing). (5) CLI: `kiso build <file> [-o out.wasm]
+[--runtime minimal|stub|incremental]` and `kiso run <file> [-- args]`; `compile --target as` still emits `.as.ts`.
+Not yet: `host/fetch` (async; belongs with the serverless target, M5), WASI. Unknown `host/` names and wrong arity are compile errors.
+
 ## Known Issues
 
 All previously tracked issues (I1–I6) have been resolved. See `archive/bugs-fixed.md` for details.

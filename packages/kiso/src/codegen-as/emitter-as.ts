@@ -90,7 +90,18 @@ const CORE_OPS: Record<string, CoreOp> = {
 // Runtime fns taking all arguments as one Array<Value>.
 const ARRAY_OPS: Record<string, string> = { vector: 'vector', 'hash-map': 'hashMap', 'pr-str': 'prStr', prn: 'prn', println: 'println', str: 'str', list: 'klist', 'hash-set': 'hashSet', concat: 'kconcat' };
 
+const HOST_FNS: Record<string, { fn: string; arity: number }> = {
+  'host/args': { fn: 'hostArgs', arity: 0 },
+  'host/env': { fn: 'hostEnvGet', arity: 1 },
+  'host/read-file': { fn: 'hostReadFileV', arity: 1 },
+  'host/write-file': { fn: 'hostWriteFileV', arity: 2 },
+  'host/stdin': { fn: 'hostStdinV', arity: 0 },
+  'host/exit': { fn: 'hostExitV', arity: 1 },
+  'host/now': { fn: 'hostNowV', arity: 0 },
+};
+
 const RUNTIME_IMPORTS = [
+  'hostArgs', 'hostEnvGet', 'hostReadFileV', 'hostWriteFileV', 'hostStdinV', 'hostExitV', 'hostNowV',
   'Value', 'Fn', 'Num', 'Str', 'Kw', 'NIL', 'TRUE', 'FALSE', 'bool_', 'truthy', 'asFn', 'arityError', 'throwValue', 'toF64', 'mkNum',
   'add', 'sub', 'mul', 'div', 'neg', 'inc', 'dec', 'rem', 'mod', 'lt', 'gt', 'lte', 'gte', 'isZero', 'isPos', 'isNeg', 'eq',
   'isEven', 'isOdd', 'isNil', 'isSome', 'isNumber', 'isString', 'isKeyword', 'isVector', 'isMap', 'identity',
@@ -183,6 +194,13 @@ class Emitter {
       case 'field':
         return unsupported('deftype field', 'deftype/defrecord arrive in M4');
     }
+  }
+
+  private hostCall(name: string, args: LExpr[]): string {
+    const spec = HOST_FNS[name];
+    if (!spec) return unsupported(name, `unknown host function; available: ${Object.keys(HOST_FNS).join(', ')}`);
+    if (args.length !== spec.arity) return unsupported(name, `expects ${spec.arity} argument(s), got ${args.length}`);
+    return `${spec.fn}(${this.args(args).join(', ')})`;
   }
 
   private coreClasses: string[] = [];
@@ -388,7 +406,7 @@ class Emitter {
       case 'closure':
         return this.closure(e);
       case 'host-call':
-        return unsupported(`host/${e.name}`, 'host calls arrive in M3');
+        return this.hostCall(e.name, e.args);
       case 'vector':
         return e.items.length === 0 ? 'EMPTY_VEC' : `mkVec([${this.args(e.items).join(', ')}])`;
       case 'map':

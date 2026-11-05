@@ -49,6 +49,22 @@ export function truthy(v: Value): bool {
 
 @external("kiso", "write")
 declare function hostWrite(s: string): void;
+@external("host", "argc")
+declare function hostArgc(): i32;
+@external("host", "arg")
+declare function hostArg(i: i32): string;
+@external("host", "env")
+declare function hostEnv(name: string): string | null;
+@external("host", "read_file")
+declare function hostReadFile(path: string): string | null;
+@external("host", "write_file")
+declare function hostWriteFile(path: string, content: string): bool;
+@external("host", "stdin")
+declare function hostStdin(): string;
+@external("host", "exit")
+declare function hostExit(code: i32): void;
+@external("host", "now")
+declare function hostNow(): f64;
 
 // -- Functions ---------------------------------------------------------------
 
@@ -934,6 +950,37 @@ export function kexMessage(e: Value): Value {
 }
 export function kexData(e: Value): Value {
   return e instanceof ExInfo ? changetype<ExInfo>(e).data : NIL;
+}
+
+// -- host/ functions: the same names a CLI host provides (D22) --------------------
+
+function optStr(s: string | null): Value {
+  return s === null ? NIL : new Str(s);
+}
+export function hostArgs(): Value {
+  const n = hostArgc();
+  const out = new Array<Value>();
+  for (let i = 0; i < n; i++) out.push(new Str(hostArg(i)));
+  return n == 0 ? NIL : listOf(out);
+}
+export function hostEnvGet(name: Value): Value {
+  return optStr(hostEnv(toStr(name, false)));
+}
+export function hostReadFileV(path: Value): Value {
+  return optStr(hostReadFile(toStr(path, false)));
+}
+export function hostWriteFileV(path: Value, content: Value): Value {
+  return bool_(hostWriteFile(toStr(path, false), toStr(content, false)));
+}
+export function hostStdinV(): Value {
+  return new Str(hostStdin());
+}
+export function hostExitV(code: Value): Value {
+  hostExit(<i32>toF64(code));
+  return NIL;
+}
+export function hostNowV(): Value {
+  return mkNum(hostNow());
 }
 
 // -- Printing ----------------------------------------------------------------

@@ -1,11 +1,14 @@
 import { parseArgs } from './args.js';
 import { compileCommand } from './compile-command.js';
+import { buildCommand, runCommand } from './build-command.js';
 import { version } from '../version.js';
 
 const HELP_TEXT = `Usage: kiso <command> [options]
 
 Commands:
   compile <file|dir...>   Compile .cljs files (JavaScript by default)
+  build <file>            Compile one .cljs file to WebAssembly (needs assemblyscript)
+  run <file> [-- args]    Build to WebAssembly and run -main on Node
 
 Options:
   --source-map            Generate sidecar .js.map files
@@ -13,6 +16,8 @@ Options:
   --out-dir <dir>         Write output to <dir>
   --target <js|as>        Backend: js (default) or as (AssemblyScript, experimental)
   --export <name>         (as) Require entry point <name>; repeatable
+  -o, --out <file>        (build) Output .wasm path
+  --runtime <gc>          (build/run) minimal (default), stub or incremental
   -V, --version           Show version
   -h, --help              Show this help
 
@@ -21,9 +26,11 @@ Examples:
   kiso compile src/
   kiso compile --source-map src/
   kiso compile --out-dir dist/ src/
+  kiso build app.cljs -o app.wasm
+  kiso run app.cljs -- arg1 arg2
 `;
 
-export function main(argv: string[]): void {
+export async function main(argv: string[]): Promise<void> {
   const args = parseArgs(argv);
 
   switch (args.command) {
@@ -40,13 +47,17 @@ export function main(argv: string[]): void {
       }
       break;
     }
+    case 'build':
+      await buildCommand(args);
+      break;
+    case 'run':
+      process.exitCode = await runCommand(args);
+      break;
   }
 }
 
-try {
-  main(process.argv.slice(2));
-} catch (e) {
+main(process.argv.slice(2)).catch((e) => {
   const msg = e instanceof Error ? e.message : String(e);
   process.stderr.write(`kiso: ${msg}\n`);
   process.exitCode = 1;
-}
+});

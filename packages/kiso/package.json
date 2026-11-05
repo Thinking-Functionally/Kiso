@@ -54,5 +54,13 @@
   "devDependencies": {
     "@types/node": "^25.3.3",
     "assemblyscript": "^0.28.20"
+  },
+  "peerDependencies": {
+    "assemblyscript": "^0.28.20"
+  },
+  "peerDependenciesMeta": {
+    "assemblyscript": {
+      "optional": true
+    }
   }
 }

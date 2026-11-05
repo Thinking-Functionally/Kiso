@@ -1,66 +1,31 @@
-// Test helper: compile generated AS source (+ runtime) to wasm with the asc API, run it in Node.
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+// Test helper: compile generated AS source to wasm and run it on the shipped Node host.
 import { readAllStr } from '../../../src/reader/reader.js';
 import { Analyzer } from '../../../src/analyzer/analyzer.js';
 import { compile } from '../../../src/api/compiler.js';
+import { buildWasm, type BuildOptions } from '../../../src/codegen-as/build.js';
+import { instantiateKiso, type NodeHostOptions } from '../../../src/host/node.js';
 
-const RUNTIME_PATH = fileURLToPath(new URL('../../../as-runtime/kiso-runtime.ts', import.meta.url));
-const runtimeSrc = readFileSync(RUNTIME_PATH, 'utf8');
+export type { BuildOptions };
+export { buildWasm };
 
-export type BuildOptions = { optimize?: boolean; runtime?: 'incremental' | 'minimal' | 'stub' };
+export type Instance = { exports: Record<string, (...a: number[]) => number | void>; output: string; runMain(): number };
 
-export async function buildWasm(asSource: string, opts: BuildOptions = {}): Promise<Uint8Array> {
-  const asc = await import('assemblyscript/asc');
-  const files: Record<string, string> = { 'main.ts': asSource, 'kiso-runtime.ts': runtimeSrc };
-  let binary: Uint8Array | null = null;
-  let stderr = '';
-  const args = ['main.ts', '--outFile', 'out.wasm', '--runtime', opts.runtime ?? 'minimal', '--importMemory', '--noAssert'];
-  if (opts.optimize !== false) args.push('-O3');
-  const { error } = await asc.main(args, {
-    readFile: (name: string) => files[name] ?? null,
-    writeFile: (name: string, data: string | Uint8Array) => {
-      if (name.endsWith('.wasm')) binary = data as Uint8Array;
-    },
-    listFiles: () => [],
-    stdout: { write: () => true } as never,
-    stderr: { write: (s: string) => ((stderr += s), true) } as never,
-  });
-  if (error || !binary) throw new Error(`asc failed: ${error?.message ?? ''}\n${stderr}`);
-  return binary;
-}
-
-export type Instance = { exports: Record<string, (...a: number[]) => number | void>; output: string };
-
-export async function runWasm(bytes: Uint8Array): Promise<Instance> {
-  // Host-provided memory so start-time output (before instantiate returns) can read strings
-  const memory = new WebAssembly.Memory({ initial: 1 });
+export async function runWasm(bytes: Uint8Array, host: NodeHostOptions = {}): Promise<Instance> {
   const output = { text: '' };
-  const getString = (ptr: number): string => {
-    const len = new Uint32Array(memory.buffer)[(ptr - 4) >>> 2]! >>> 1;
-    return String.fromCharCode(...new Uint16Array(memory.buffer, ptr, len));
-  };
-  const { instance } = await WebAssembly.instantiate(bytes, {
-    env: {
-      memory,
-      abort: (msg: number, file: number, line: number, col: number) => {
-        throw new Error(`abort: ${msg ? getString(msg) : ''} (${file ? getString(file) : ''}:${line}:${col})`);
-      },
-    },
-    kiso: { write: (p: number) => void (output.text += getString(p)) },
-  });
+  const inst = await instantiateKiso(bytes, { ...host, write: (s) => void (output.text += s) });
   return {
-    exports: instance.exports as never,
+    exports: inst.exports,
     get output() {
       return output.text;
     },
+    runMain: () => inst.runMain(),
   };
 }
 
 /** Compile Kiso source via the AS backend and run it. */
-export async function runKisoAs(src: string, opts: BuildOptions = {}): Promise<Instance> {
+export async function runKisoAs(src: string, opts: BuildOptions & { host?: NodeHostOptions } = {}): Promise<Instance> {
   const { code } = compile(src, { target: 'as' });
-  return runWasm(await buildWasm(code, opts));
+  return runWasm(await buildWasm(code, opts), opts.host);
 }
 
 export { readAllStr, Analyzer };
