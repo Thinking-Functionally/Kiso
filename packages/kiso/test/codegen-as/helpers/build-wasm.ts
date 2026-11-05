@@ -15,7 +15,7 @@ export async function buildWasm(asSource: string, opts: BuildOptions = {}): Prom
   const files: Record<string, string> = { 'main.ts': asSource, 'kiso-runtime.ts': runtimeSrc };
   let binary: Uint8Array | null = null;
   let stderr = '';
-  const args = ['main.ts', '--outFile', 'out.wasm', '--runtime', opts.runtime ?? 'incremental', '--importMemory'];
+  const args = ['main.ts', '--outFile', 'out.wasm', '--runtime', opts.runtime ?? 'incremental', '--importMemory', '--noAssert'];
   if (opts.optimize !== false) args.push('-O3');
   const { error } = await asc.main(args, {
     readFile: (name: string) => files[name] ?? null,

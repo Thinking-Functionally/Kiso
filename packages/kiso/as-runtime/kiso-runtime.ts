@@ -18,11 +18,13 @@ export class Num extends Value {
   }
 }
 export class Str extends Value {
+  h: i32 = 0;
   constructor(public v: string) {
     super();
   }
 }
 export class Kw extends Value {
+  h: i32 = 0;
   constructor(
     public ns: string,
     public name: string,
@@ -85,6 +87,25 @@ export function throwValue(v: Value): void {
 
 // -- Numbers -----------------------------------------------------------------
 
+// Small integers are cached so hot loops do not allocate (D20).
+const SMALL_MIN: i32 = -128;
+const SMALL_MAX: i32 = 1024;
+function makeSmall(): Array<Num> {
+  const a = new Array<Num>(SMALL_MAX - SMALL_MIN);
+  for (let i = 0; i < a.length; i++) a[i] = new Num(<f64>(i + SMALL_MIN));
+  return a;
+}
+const SMALL: Array<Num> = makeSmall();
+
+@inline
+export function mkNum(x: f64): Value {
+  const i = <i32>x;
+  if (<f64>i == x && i >= SMALL_MIN && i < SMALL_MAX && (i != 0 || reinterpret<i64>(x) == 0)) {
+    return unchecked(SMALL[i - SMALL_MIN]);
+  }
+  return new Num(x);
+}
+
 export function toF64(v: Value): f64 {
   if (v instanceof Num) return changetype<Num>(v).v;
   abort("Value is not a number");
@@ -92,32 +113,32 @@ export function toF64(v: Value): f64 {
 }
 
 export function add(a: Value, b: Value): Value {
-  return new Num(toF64(a) + toF64(b));
+  return mkNum(toF64(a) + toF64(b));
 }
 export function sub(a: Value, b: Value): Value {
-  return new Num(toF64(a) - toF64(b));
+  return mkNum(toF64(a) - toF64(b));
 }
 export function mul(a: Value, b: Value): Value {
-  return new Num(toF64(a) * toF64(b));
+  return mkNum(toF64(a) * toF64(b));
 }
 export function div(a: Value, b: Value): Value {
-  return new Num(toF64(a) / toF64(b));
+  return mkNum(toF64(a) / toF64(b));
 }
 export function neg(a: Value): Value {
-  return new Num(-toF64(a));
+  return mkNum(-toF64(a));
 }
 export function inc(a: Value): Value {
-  return new Num(toF64(a) + 1);
+  return mkNum(toF64(a) + 1);
 }
 export function dec(a: Value): Value {
-  return new Num(toF64(a) - 1);
+  return mkNum(toF64(a) - 1);
 }
 export function rem(a: Value, b: Value): Value {
-  return new Num(toF64(a) % toF64(b));
+  return mkNum(toF64(a) % toF64(b));
 }
 export function mod(a: Value, b: Value): Value {
   const y = toF64(b);
-  return new Num(((toF64(a) % y) + y) % y);
+  return mkNum(((toF64(a) % y) + y) % y);
 }
 
 export function lt(a: Value, b: Value): bool {
@@ -142,18 +163,474 @@ export function isNeg(a: Value): bool {
   return toF64(a) < 0;
 }
 
-// -- Equality ----------------------------------------------------------------
+// -- Collections (D20) --------------------------------------------------------
+//
+// Vec: persistent by sharing an append-only backing array; a Vec only sees its first `n`
+// slots, so `conj` is amortized O(1) and older versions are unaffected.
+// MapV: insertion-ordered array map with a lazily built open-addressing index (n > 8).
+
+export class Vec extends Value {
+  constructor(
+    public a: Array<Value>,
+    public n: i32,
+    public list: bool,
+  ) {
+    super();
+  }
+}
+
+const INDEX_MIN: i32 = 8;
+
+export class MapV extends Value {
+  constructor(
+    public keys: Array<Value>,
+    public vals: Array<Value>,
+    public n: i32,
+    public idx: Int32Array | null,
+  ) {
+    super();
+  }
+}
+
+export const EMPTY_VEC: Value = new Vec([], 0, false);
+export const EMPTY_MAP: Value = new MapV([], [], 0, null);
+
+function hashStr(s: string): i32 {
+  let h: i32 = 5381;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h) ^ s.charCodeAt(i);
+  return h;
+}
+
+export function hashOf(v: Value): i32 {
+  if (v === NIL) return 0;
+  if (v === TRUE) return 1231;
+  if (v === FALSE) return 1237;
+  if (v instanceof Num) {
+    let f = changetype<Num>(v).v;
+    if (f == 0) f = 0;
+    const b = reinterpret<i64>(f);
+    return <i32>(b ^ (b >>> 32));
+  }
+  if (v instanceof Str) {
+    const s = changetype<Str>(v);
+    if (s.h == 0) s.h = hashStr(s.v) | 1;
+    return s.h;
+  }
+  if (v instanceof Kw) {
+    const k = changetype<Kw>(v);
+    if (k.h == 0) k.h = (hashStr(k.ns) * 31 + hashStr(k.name)) | 1;
+    return k.h;
+  }
+  if (v instanceof Vec) {
+    const x = changetype<Vec>(v);
+    let h: i32 = 1;
+    for (let i = 0; i < x.n; i++) h = h * 31 + hashOf(unchecked(x.a[i]));
+    return h;
+  }
+  if (v instanceof MapV) {
+    const m = changetype<MapV>(v);
+    let h: i32 = 0;
+    for (let i = 0; i < m.n; i++) h += hashOf(unchecked(m.keys[i])) ^ hashOf(unchecked(m.vals[i]));
+    return h;
+  }
+  return <i32>changetype<usize>(v);
+}
 
 export function eq(a: Value, b: Value): bool {
   if (a === b) return true;
-  if (a instanceof Num && b instanceof Num) return changetype<Num>(a).v == changetype<Num>(b).v;
-  if (a instanceof Str && b instanceof Str) return changetype<Str>(a).v == changetype<Str>(b).v;
-  if (a instanceof Kw && b instanceof Kw) {
+  if (a instanceof Num) return b instanceof Num && changetype<Num>(a).v == changetype<Num>(b).v;
+  if (a instanceof Str) return b instanceof Str && changetype<Str>(a).v == changetype<Str>(b).v;
+  if (a instanceof Kw) {
+    if (!(b instanceof Kw)) return false;
     const x = changetype<Kw>(a);
     const y = changetype<Kw>(b);
     return x.ns == y.ns && x.name == y.name;
   }
+  if (a instanceof Vec) {
+    if (!(b instanceof Vec)) return false;
+    const x = changetype<Vec>(a);
+    const y = changetype<Vec>(b);
+    if (x.n != y.n) return false;
+    for (let i = 0; i < x.n; i++) if (!eq(unchecked(x.a[i]), unchecked(y.a[i]))) return false;
+    return true;
+  }
+  if (a instanceof MapV) {
+    if (!(b instanceof MapV)) return false;
+    const x = changetype<MapV>(a);
+    const y = changetype<MapV>(b);
+    if (x.n != y.n) return false;
+    for (let i = 0; i < x.n; i++) {
+      const j = mapFind(y, unchecked(x.keys[i]));
+      if (j < 0 || !eq(unchecked(x.vals[i]), unchecked(y.vals[j]))) return false;
+    }
+    return true;
+  }
   return false;
+}
+
+// -- map internals
+
+function idxInsert(idx: Int32Array, keys: Array<Value>, pos: i32): void {
+  const mask = idx.length - 1;
+  let i = hashOf(unchecked(keys[pos])) & mask;
+  while (unchecked(idx[i]) != 0) i = (i + 1) & mask;
+  unchecked((idx[i] = pos + 1));
+}
+
+function buildIndex(keys: Array<Value>, n: i32): Int32Array {
+  let size: i32 = 16;
+  while (size < n * 2 + 2) size <<= 1;
+  const idx = new Int32Array(size);
+  for (let i = 0; i < n; i++) idxInsert(idx, keys, i);
+  return idx;
+}
+
+function mapFind(m: MapV, k: Value): i32 {
+  const n = m.n;
+  if (n <= INDEX_MIN) {
+    for (let i = 0; i < n; i++) if (eq(unchecked(m.keys[i]), k)) return i;
+    return -1;
+  }
+  let idx = m.idx;
+  if (idx === null) {
+    idx = buildIndex(m.keys, n);
+    m.idx = idx;
+  }
+  const mask = idx.length - 1;
+  let i = hashOf(k) & mask;
+  while (true) {
+    const p = unchecked(idx[i]);
+    if (p == 0) return -1;
+    // entries at positions >= n belong to a newer map sharing this table
+    if (p - 1 < n && eq(unchecked(m.keys[p - 1]), k)) return p - 1;
+    i = (i + 1) & mask;
+  }
+  return -1;
+}
+
+function copyN(a: Array<Value>, n: i32): Array<Value> {
+  const out = new Array<Value>(n);
+  for (let i = 0; i < n; i++) unchecked((out[i] = a[i]));
+  return out;
+}
+
+function mapAssoc(m: MapV, k: Value, v: Value): MapV {
+  const j = mapFind(m, k);
+  if (j >= 0) {
+    const vals = copyN(m.vals, m.n);
+    vals[j] = v;
+    return new MapV(m.keys, vals, m.n, m.idx);
+  }
+  const n = m.n;
+  if (m.keys.length == n && m.vals.length == n) {
+    m.keys.push(k);
+    m.vals.push(v);
+    let idx = m.idx;
+    if (n + 1 > INDEX_MIN) {
+      if (idx === null || (n + 1) * 2 > idx.length) idx = buildIndex(m.keys, n + 1);
+      else idxInsert(idx, m.keys, n);
+    }
+    return new MapV(m.keys, m.vals, n + 1, idx);
+  }
+  const keys = copyN(m.keys, n);
+  const vals = copyN(m.vals, n);
+  keys.push(k);
+  vals.push(v);
+  return new MapV(keys, vals, n + 1, null);
+}
+
+export function mkVec(items: Array<Value>): Value {
+  return new Vec(items, items.length, false);
+}
+
+export function mkMap(kv: Array<Value>): Value {
+  let m = changetype<MapV>(EMPTY_MAP);
+  for (let i = 0; i + 1 < kv.length; i += 2) m = mapAssoc(m, kv[i], kv[i + 1]);
+  return m;
+}
+
+export function vector(args: Array<Value>): Value {
+  return mkVec(args);
+}
+export function hashMap(args: Array<Value>): Value {
+  if (args.length % 2 != 0) abort("hash-map requires an even number of arguments");
+  return mkMap(args);
+}
+
+function asVec(v: Value): Vec {
+  if (v instanceof Vec) return changetype<Vec>(v);
+  abort("Value is not a vector");
+  return unreachable();
+}
+
+export function kcount(v: Value): Value {
+  if (v === NIL) return mkNum(0);
+  if (v instanceof Vec) return mkNum(<f64>changetype<Vec>(v).n);
+  if (v instanceof MapV) return mkNum(<f64>changetype<MapV>(v).n);
+  if (v instanceof Str) return mkNum(<f64>changetype<Str>(v).v.length);
+  abort("count not supported on this value");
+  return NIL;
+}
+
+export function kempty(v: Value): bool {
+  return toF64(kcount(v)) == 0;
+}
+
+export function kconj(c: Value, x: Value): Value {
+  const v = asVec(c);
+  if (v.list) abort("conj on lists is not supported");
+  if (v.a.length == v.n) {
+    v.a.push(x);
+    return new Vec(v.a, v.n + 1, false);
+  }
+  const a = copyN(v.a, v.n);
+  a.push(x);
+  return new Vec(a, v.n + 1, false);
+}
+
+export function kconjN(c: Value, xs: Array<Value>): Value {
+  let r = c;
+  for (let i = 0; i < xs.length; i++) r = kconj(r, xs[i]);
+  return r;
+}
+
+export function knth3(c: Value, i: Value, dflt: Value, hasDefault: bool): Value {
+  const idx = <i32>toF64(i);
+  if (c instanceof Vec) {
+    const v = changetype<Vec>(c);
+    if (idx >= 0 && idx < v.n) return unchecked(v.a[idx]);
+  } else if (c instanceof Str) {
+    const s = changetype<Str>(c).v;
+    if (idx >= 0 && idx < s.length) return new Str(s.charAt(idx));
+  } else if (c === NIL) {
+    if (hasDefault) return dflt;
+    return NIL;
+  } else abort("nth not supported on this value");
+  if (hasDefault) return dflt;
+  abort("Index out of bounds");
+  return NIL;
+}
+export function knth(c: Value, i: Value): Value {
+  return knth3(c, i, NIL, false);
+}
+
+export function kget3(c: Value, k: Value, dflt: Value): Value {
+  if (c instanceof MapV) {
+    const m = changetype<MapV>(c);
+    const j = mapFind(m, k);
+    return j >= 0 ? unchecked(m.vals[j]) : dflt;
+  }
+  if (c instanceof Vec) {
+    if (k instanceof Num) {
+      const f = changetype<Num>(k).v;
+      const i = <i32>f;
+      const v = changetype<Vec>(c);
+      if (<f64>i == f && i >= 0 && i < v.n) return unchecked(v.a[i]);
+    }
+    return dflt;
+  }
+  return dflt;
+}
+export function kget(c: Value, k: Value): Value {
+  return kget3(c, k, NIL);
+}
+
+export function kassoc(c: Value, k: Value, v: Value): Value {
+  if (c === NIL) return mapAssoc(changetype<MapV>(EMPTY_MAP), k, v);
+  if (c instanceof MapV) return mapAssoc(changetype<MapV>(c), k, v);
+  if (c instanceof Vec) {
+    const x = changetype<Vec>(c);
+    const i = <i32>toF64(k);
+    if (i == x.n) return kconj(c, v);
+    if (i < 0 || i > x.n) abort("Index out of bounds");
+    const a = copyN(x.a, x.n);
+    a[i] = v;
+    return new Vec(a, x.n, x.list);
+  }
+  abort("assoc not supported on this value");
+  return NIL;
+}
+
+export function kassocN(c: Value, kvs: Array<Value>): Value {
+  if (kvs.length % 2 != 0) abort("assoc expects an even number of key/value arguments");
+  let r = c;
+  for (let i = 0; i < kvs.length; i += 2) r = kassoc(r, kvs[i], kvs[i + 1]);
+  return r;
+}
+
+export function kdissoc(c: Value, k: Value): Value {
+  if (c === NIL) return NIL;
+  if (!(c instanceof MapV)) {
+    abort("dissoc requires a map");
+    return NIL;
+  }
+  const m = changetype<MapV>(c);
+  const j = mapFind(m, k);
+  if (j < 0) return c;
+  const keys = new Array<Value>();
+  const vals = new Array<Value>();
+  for (let i = 0; i < m.n; i++) {
+    if (i == j) continue;
+    keys.push(unchecked(m.keys[i]));
+    vals.push(unchecked(m.vals[i]));
+  }
+  return new MapV(keys, vals, keys.length, null);
+}
+
+export function kcontains(c: Value, k: Value): bool {
+  if (c instanceof MapV) return mapFind(changetype<MapV>(c), k) >= 0;
+  if (c instanceof Vec && k instanceof Num) {
+    const f = changetype<Num>(k).v;
+    return f >= 0 && f < <f64>changetype<Vec>(c).n && f == Math.floor(f);
+  }
+  return false;
+}
+
+export function kkeys(c: Value): Value {
+  if (c === NIL) return NIL;
+  const m = changetype<MapV>(c);
+  if (!(c instanceof MapV)) abort("keys requires a map");
+  return new Vec(copyN(m.keys, m.n), m.n, true);
+}
+export function kvals(c: Value): Value {
+  if (c === NIL) return NIL;
+  const m = changetype<MapV>(c);
+  if (!(c instanceof MapV)) abort("vals requires a map");
+  return new Vec(copyN(m.vals, m.n), m.n, true);
+}
+
+export function kfirst(c: Value): Value {
+  if (c === NIL) return NIL;
+  const v = asVec(c);
+  return v.n > 0 ? unchecked(v.a[0]) : NIL;
+}
+export function ksecond(c: Value): Value {
+  if (c === NIL) return NIL;
+  const v = asVec(c);
+  return v.n > 1 ? unchecked(v.a[1]) : NIL;
+}
+export function klast(c: Value): Value {
+  if (c === NIL) return NIL;
+  const v = asVec(c);
+  return v.n > 0 ? unchecked(v.a[v.n - 1]) : NIL;
+}
+export function kpeek(c: Value): Value {
+  return klast(c);
+}
+export function kpop(c: Value): Value {
+  const v = asVec(c);
+  if (v.n == 0) abort("Can't pop empty vector");
+  return new Vec(v.a, v.n - 1, v.list);
+}
+
+export function kvec(c: Value): Value {
+  if (c === NIL) return EMPTY_VEC;
+  const v = asVec(c);
+  return new Vec(copyN(v.a, v.n), v.n, false);
+}
+
+export function isNil(v: Value): bool {
+  return v === NIL;
+}
+export function isSome(v: Value): bool {
+  return v !== NIL;
+}
+export function isNumber(v: Value): bool {
+  return v instanceof Num;
+}
+export function isString(v: Value): bool {
+  return v instanceof Str;
+}
+export function isKeyword(v: Value): bool {
+  return v instanceof Kw;
+}
+export function isVector(v: Value): bool {
+  return v instanceof Vec && !changetype<Vec>(v).list;
+}
+export function isMap(v: Value): bool {
+  return v instanceof MapV;
+}
+export function isEven(v: Value): bool {
+  return toF64(v) % 2 == 0;
+}
+export function isOdd(v: Value): bool {
+  return toF64(v) % 2 != 0;
+}
+export function identity(v: Value): Value {
+  return v;
+}
+export function kmax(a: Value, b: Value): Value {
+  return toF64(a) >= toF64(b) ? a : b;
+}
+export function kmin(a: Value, b: Value): Value {
+  return toF64(a) <= toF64(b) ? a : b;
+}
+
+// -- Calling any callable value ------------------------------------------------
+
+export function callV0(f: Value): Value {
+  return asFn(f).call0();
+}
+export function callV1(f: Value, a: Value): Value {
+  if (f instanceof Fn) return changetype<Fn>(f).call1(a);
+  if (f instanceof Kw) return kget(a, f);
+  if (f instanceof MapV) return kget(f, a);
+  if (f instanceof Vec) return knth(f, a);
+  return asFn(f).call1(a);
+}
+export function callV2(f: Value, a: Value, b: Value): Value {
+  if (f instanceof Fn) return changetype<Fn>(f).call2(a, b);
+  if (f instanceof Kw) return kget3(a, f, b);
+  if (f instanceof MapV) return kget3(f, a, b);
+  return asFn(f).call2(a, b);
+}
+export function callV3(f: Value, a: Value, b: Value, c: Value): Value {
+  return asFn(f).call3(a, b, c);
+}
+export function callVN(f: Value, args: Array<Value>): Value {
+  return asFn(f).invoke(args);
+}
+
+export function kreduce3(f: Value, init: Value, c: Value): Value {
+  if (c === NIL) return init;
+  const v = asVec(c);
+  let acc = init;
+  for (let i = 0; i < v.n; i++) acc = callV2(f, acc, unchecked(v.a[i]));
+  return acc;
+}
+export function kreduce2(f: Value, c: Value): Value {
+  if (c === NIL) return callV0(f);
+  const v = asVec(c);
+  if (v.n == 0) return callV0(f);
+  let acc = unchecked(v.a[0]);
+  for (let i = 1; i < v.n; i++) acc = callV2(f, acc, unchecked(v.a[i]));
+  return acc;
+}
+
+export function kupdate(m: Value, k: Value, f: Value, extra: Array<Value>): Value {
+  const cur = kget(m, k);
+  let nv: Value;
+  if (extra.length == 0) nv = callV1(f, cur);
+  else {
+    const args = new Array<Value>();
+    args.push(cur);
+    for (let i = 0; i < extra.length; i++) args.push(extra[i]);
+    nv = callVN(f, args);
+  }
+  return kassoc(m, k, nv);
+}
+
+export function kgetIn3(m: Value, path: Value, dflt: Value): Value {
+  const p = asVec(path);
+  let cur = m;
+  for (let i = 0; i < p.n; i++) {
+    if (!kcontains(cur, unchecked(p.a[i]))) return dflt;
+    cur = kget(cur, unchecked(p.a[i]));
+  }
+  return cur;
+}
+export function kgetIn(m: Value, path: Value): Value {
+  return kgetIn3(m, path, NIL);
 }
 
 // -- Printing ----------------------------------------------------------------
@@ -166,6 +643,18 @@ function fmtNum(n: f64): string {
   return n.toString();
 }
 
+function quote(s: string): string {
+  let out = '"';
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    if (c == 34) out += '\\"';
+    else if (c == 92) out += "\\\\";
+    else if (c == 10) out += "\\n";
+    else out += s.charAt(i);
+  }
+  return out + '"';
+}
+
 export function toStr(v: Value, readable: bool): string {
   if (v === NIL) return readable ? "nil" : "";
   if (v === TRUE) return "true";
@@ -173,14 +662,37 @@ export function toStr(v: Value, readable: bool): string {
   if (v instanceof Num) return fmtNum(changetype<Num>(v).v);
   if (v instanceof Str) {
     const s = changetype<Str>(v).v;
-    return readable ? '"' + s + '"' : s;
+    return readable ? quote(s) : s;
   }
   if (v instanceof Kw) {
     const k = changetype<Kw>(v);
     return k.ns.length > 0 ? ":" + k.ns + "/" + k.name : ":" + k.name;
   }
+  if (v instanceof Vec) {
+    const x = changetype<Vec>(v);
+    let out = x.list ? "(" : "[";
+    for (let i = 0; i < x.n; i++) {
+      if (i > 0) out += " ";
+      out += elemStr(unchecked(x.a[i]), readable);
+    }
+    return out + (x.list ? ")" : "]");
+  }
+  if (v instanceof MapV) {
+    const m = changetype<MapV>(v);
+    let out = "{";
+    for (let i = 0; i < m.n; i++) {
+      if (i > 0) out += ", ";
+      out += elemStr(unchecked(m.keys[i]), readable) + " " + elemStr(unchecked(m.vals[i]), readable);
+    }
+    return out + "}";
+  }
   if (v instanceof Fn) return "#<fn>";
   return "#<object>";
+}
+
+// nil inside a collection prints as "nil" even for println
+function elemStr(v: Value, readable: bool): string {
+  return v === NIL ? "nil" : toStr(v, readable);
 }
 
 export function println(args: Array<Value>): Value {
@@ -191,6 +703,25 @@ export function println(args: Array<Value>): Value {
   }
   hostWrite(out + "\n");
   return NIL;
+}
+
+export function prn(args: Array<Value>): Value {
+  let out = "";
+  for (let i = 0; i < args.length; i++) {
+    if (i > 0) out += " ";
+    out += toStr(args[i], true);
+  }
+  hostWrite(out + "\n");
+  return NIL;
+}
+
+export function prStr(args: Array<Value>): Value {
+  let out = "";
+  for (let i = 0; i < args.length; i++) {
+    if (i > 0) out += " ";
+    out += toStr(args[i], true);
+  }
+  return new Str(out);
 }
 
 export function str(args: Array<Value>): Value {

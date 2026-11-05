@@ -9,6 +9,8 @@ import { AsUnsupportedError } from './supported.js';
 import { mangle } from './mangle.js';
 import { NumericCheck, emitNative, nativeName } from './numeric.js';
 
+const MAX_DIRECT = 3;
+
 export const RUNTIME_MODULE = './kiso-runtime';
 
 export type EmitOptions = {
@@ -16,13 +18,10 @@ export type EmitOptions = {
   exports?: string[];
 };
 
-const MAX_DIRECT = 3;
-
 // Core ops compiled to direct runtime calls. `value` returns Value, `bool` returns native bool.
-type CoreOp = { kind: 'value' | 'bool'; fn: string; arity: number | 'variadic' };
+type CoreOp = { kind: 'value' | 'bool'; fn: string; arity: number | number[] };
 const CORE_OPS: Record<string, CoreOp> = {
   '/': { kind: 'value', fn: 'div', arity: 2 },
-  '*': { kind: 'value', fn: 'mul', arity: 2 },
   inc: { kind: 'value', fn: 'inc', arity: 1 },
   dec: { kind: 'value', fn: 'dec', arity: 1 },
   mod: { kind: 'value', fn: 'mod', arity: 2 },
@@ -35,7 +34,45 @@ const CORE_OPS: Record<string, CoreOp> = {
   'zero?': { kind: 'bool', fn: 'isZero', arity: 1 },
   'pos?': { kind: 'bool', fn: 'isPos', arity: 1 },
   'neg?': { kind: 'bool', fn: 'isNeg', arity: 1 },
+  'even?': { kind: 'bool', fn: 'isEven', arity: 1 },
+  'odd?': { kind: 'bool', fn: 'isOdd', arity: 1 },
+  'nil?': { kind: 'bool', fn: 'isNil', arity: 1 },
+  'some?': { kind: 'bool', fn: 'isSome', arity: 1 },
+  'number?': { kind: 'bool', fn: 'isNumber', arity: 1 },
+  'string?': { kind: 'bool', fn: 'isString', arity: 1 },
+  'keyword?': { kind: 'bool', fn: 'isKeyword', arity: 1 },
+  'vector?': { kind: 'bool', fn: 'isVector', arity: 1 },
+  'map?': { kind: 'bool', fn: 'isMap', arity: 1 },
+  'contains?': { kind: 'bool', fn: 'kcontains', arity: 2 },
+  'empty?': { kind: 'bool', fn: 'kempty', arity: 1 },
+  count: { kind: 'value', fn: 'kcount', arity: 1 },
+  nth: { kind: 'value', fn: 'knth', arity: 2 },
+  get: { kind: 'value', fn: 'kget', arity: 2 },
+  dissoc: { kind: 'value', fn: 'kdissoc', arity: 2 },
+  keys: { kind: 'value', fn: 'kkeys', arity: 1 },
+  vals: { kind: 'value', fn: 'kvals', arity: 1 },
+  first: { kind: 'value', fn: 'kfirst', arity: 1 },
+  second: { kind: 'value', fn: 'ksecond', arity: 1 },
+  last: { kind: 'value', fn: 'klast', arity: 1 },
+  peek: { kind: 'value', fn: 'kpeek', arity: 1 },
+  pop: { kind: 'value', fn: 'kpop', arity: 1 },
+  vec: { kind: 'value', fn: 'kvec', arity: 1 },
+  identity: { kind: 'value', fn: 'identity', arity: 1 },
+  reduce: { kind: 'value', fn: 'kreduce', arity: [2, 3] },
+  'get-in': { kind: 'value', fn: 'kgetIn', arity: [2, 3] },
 };
+// Runtime fns taking all arguments as one Array<Value>.
+const ARRAY_OPS: Record<string, string> = { vector: 'vector', 'hash-map': 'hashMap', 'pr-str': 'prStr', prn: 'prn', println: 'println', str: 'str' };
+
+const RUNTIME_IMPORTS = [
+  'Value', 'Fn', 'Num', 'Str', 'Kw', 'NIL', 'TRUE', 'FALSE', 'bool_', 'truthy', 'asFn', 'arityError', 'throwValue', 'toF64', 'mkNum',
+  'add', 'sub', 'mul', 'div', 'neg', 'inc', 'dec', 'rem', 'mod', 'lt', 'gt', 'lte', 'gte', 'isZero', 'isPos', 'isNeg', 'eq',
+  'isEven', 'isOdd', 'isNil', 'isSome', 'isNumber', 'isString', 'isKeyword', 'isVector', 'isMap', 'identity',
+  'mkVec', 'mkMap', 'EMPTY_VEC', 'EMPTY_MAP', 'vector', 'hashMap', 'kcount', 'kempty', 'kconj', 'kconjN', 'knth', 'knth3', 'kget', 'kget3', 'kassoc', 'kassocN',
+  'kdissoc', 'kcontains', 'kkeys', 'kvals', 'kfirst', 'ksecond', 'klast', 'kpeek', 'kpop', 'kvec', 'kmax', 'kmin',
+  'callV0', 'callV1', 'callV2', 'callV3', 'callVN', 'kreduce2', 'kreduce3', 'kupdate', 'kgetIn', 'kgetIn3',
+  'println', 'prn', 'prStr', 'str',
+];
 
 function unsupported(construct: string, reason: string): never {
   throw new AsUnsupportedError(construct, -1, reason);
@@ -112,15 +149,49 @@ class Emitter {
         return 'this';
       case 'global':
         if (this.globals.has(v.name)) return `g_${mangle(v.name)}`;
-        return unsupported(`var ${v.name}`, 'not defined in this module; core functions as values arrive in M3');
+        return this.coreFnValue(v.name);
       case 'field':
         return unsupported('deftype field', 'deftype/defrecord arrive in M4');
     }
   }
 
+  private coreClasses: string[] = [];
+
+  /** A core function used as a value (e.g. `(reduce + 0 xs)`): a cached Fn wrapping the inline op. */
+  private coreFnValue(name: string): string {
+    const key = `core:${name}`;
+    const known = this.consts.get(key);
+    if (known) return known;
+    const cls = `Core_${mangle(name)}`;
+    const methods: string[] = [];
+    const dispatch: string[] = [];
+    for (let n = 0; n <= MAX_DIRECT; n++) {
+      const names = Array.from({ length: n }, (_, i) => `l_a${i}`);
+      const argExprs: LExpr[] = names.map((_, i) => ({ type: 'var', name: `a${i}`, kind: 'local' }));
+      let body: string;
+      try {
+        body = this.coreCall(name, argExprs);
+      } catch (err) {
+        if (err instanceof AsUnsupportedError) continue;
+        throw err;
+      }
+      methods.push(`  call${n}(${names.map((x) => `${x}: Value`).join(', ')}): Value {\n    return ${body};\n  }`);
+      dispatch.push(`      case ${n}: return this.call${n}(${names.map((_, i) => `args[${i}]`).join(', ')});`);
+    }
+    if (methods.length === 0) return unsupported(`var ${name}`, 'not defined in this module and not a supported core function');
+    this.coreClasses.push(
+      [`class ${cls} extends Fn {`, ...methods, '  invoke(args: Array<Value>): Value {', '    switch (args.length) {', ...dispatch, '    }', '    return arityError();', '  }', '}'].join('\n'),
+    );
+    return this.constant(key, `new ${cls}()`);
+  }
+
   private coreOpFor(e: LExpr): { name: string; op: string } | null {
     if (e.type === 'var' && e.kind === 'global' && !this.globals.has(e.name)) return { name: e.name, op: e.name };
     return null;
+  }
+
+  private arityOk(op: CoreOp, n: number): boolean {
+    return Array.isArray(op.arity) ? op.arity.includes(n) : op.arity === n;
   }
 
   private args(args: LExpr[]): string[] {
@@ -141,7 +212,7 @@ class Emitter {
       const core = this.coreOpFor(e.fn);
       if (core) {
         const op = CORE_OPS[core.op];
-        if (op && op.kind === 'bool' && op.arity === e.args.length) {
+        if (op && op.kind === 'bool' && this.arityOk(op, e.args.length)) {
           return `${op.fn}(${this.args(e.args).join(', ')})`;
         }
         if (core.op === 'not' && e.args.length === 1) return `!${this.cond(e.args[0]!)}`;
@@ -155,10 +226,27 @@ class Emitter {
   private invoke(e: Extract<LExpr, { type: 'invoke' }>): string {
     const core = this.coreOpFor(e.fn);
     if (core) return this.coreCall(core.op, e.args);
-    const head = e.fn.type === 'var' && e.fn.kind === 'self' ? 'this' : `asFn(${this.expr(e.fn)})`;
     const a = this.args(e.args);
-    if (a.length <= MAX_DIRECT) return `${head}.call${a.length}(${a.join(', ')})`;
-    return `${head}.invoke([${a.join(', ')}])`;
+    if (e.fn.type === 'var' && e.fn.kind === 'self') {
+      return a.length <= MAX_DIRECT ? `this.call${a.length}(${a.join(', ')})` : `this.invoke([${a.join(', ')}])`;
+    }
+    if (e.fn.type === 'keyword' && (a.length === 1 || a.length === 2)) {
+      const k = this.expr(e.fn);
+      return a.length === 1 ? `kget(${a[0]}, ${k})` : `kget3(${a[0]}, ${k}, ${a[1]})`;
+    }
+    const f = this.expr(e.fn);
+    return a.length <= MAX_DIRECT ? `callV${a.length}(${[f, ...a].join(', ')})` : `callVN(${f}, [${a.join(', ')}])`;
+  }
+
+  private tableCall(name: string, a: string[]): string {
+    const op = CORE_OPS[name];
+    if (op && this.arityOk(op, a.length)) {
+      if (name === 'reduce') return `${op.fn}${a.length}(${a.join(', ')})`;
+      if (name === 'get-in') return `${a.length === 2 ? 'kgetIn' : 'kgetIn3'}(${a.join(', ')})`;
+      const call = `${op.fn}(${a.join(', ')})`;
+      return op.kind === 'bool' ? `bool_(${call})` : call;
+    }
+    return unsupported(`(${name} …) with ${a.length} args`, 'unknown core function or arity');
   }
 
   private coreCall(name: string, args: LExpr[]): string {
@@ -180,16 +268,30 @@ class Emitter {
       case 'not=':
         if (a.length === 2) return `bool_(!eq(${a[0]}, ${a[1]}))`;
         break;
-      case 'println':
-        return `println([${a.join(', ')}])`;
-      case 'str':
-        return `str([${a.join(', ')}])`;
+      case 'conj':
+        if (a.length >= 1) return a.length === 1 ? a[0]! : a.slice(2).length === 0 ? `kconj(${a[0]}, ${a[1]})` : `kconjN(${a[0]}, [${a.slice(1).join(', ')}])`;
+        break;
+      case 'assoc':
+        if (a.length === 3) return `kassoc(${a[0]}, ${a[1]}, ${a[2]})`;
+        if (a.length > 3) return `kassocN(${a[0]}, [${a.slice(1).join(', ')}])`;
+        break;
+      case 'nth':
+        if (a.length === 3) return `knth3(${a[0]}, ${a[1]}, ${a[2]}, true)`;
+        return this.tableCall(name, a);
+      case 'get':
+        if (a.length === 3) return `kget3(${a[0]}, ${a[1]}, ${a[2]})`;
+        return this.tableCall(name, a);
+      case 'update':
+        if (a.length >= 3) return `kupdate(${a[0]}, ${a[1]}, ${a[2]}, [${a.slice(3).join(', ')}])`;
+        break;
+      case 'max':
+      case 'min':
+        if (a.length >= 1) return a.reduce((acc, x) => `k${name}(${acc}, ${x})`);
+        break;
       default: {
-        const op = CORE_OPS[name];
-        if (op && op.arity === a.length) {
-          const call = `${op.fn}(${a.join(', ')})`;
-          return op.kind === 'bool' ? `bool_(${call})` : call;
-        }
+        const arr = ARRAY_OPS[name];
+        if (arr) return `${arr}([${a.join(', ')}])`;
+        return this.tableCall(name, a);
       }
     }
     return unsupported(`(${name} …) with ${a.length} args`, 'unknown core function or arity in M2');
@@ -210,9 +312,11 @@ class Emitter {
       case 'host-call':
         return unsupported(`host/${e.name}`, 'host calls arrive in M3');
       case 'vector':
-      case 'set':
+        return e.items.length === 0 ? 'EMPTY_VEC' : `mkVec([${this.args(e.items).join(', ')}])`;
       case 'map':
-        return unsupported(`${e.type} literal`, 'persistent collections arrive in M3');
+        return e.keys.length === 0 ? 'EMPTY_MAP' : `mkMap([${e.keys.flatMap((k, i) => [this.expr(k), this.expr(e.vals[i]!)]).join(', ')}])`;
+      case 'set':
+        return unsupported('set literal', 'sets are not part of the M3 subset');
       case 'new':
         return unsupported('new', 'deftype/defrecord arrive in M4');
       case 'reify':
@@ -305,7 +409,7 @@ class Emitter {
       if (this.native.has(fn.id)) {
         const guard = ar.params.map((p) => `l_${mangle(p)} instanceof Num`).join(' && ');
         const argv = ar.params.map((p) => `changetype<Num>(l_${mangle(p)}).v`).join(', ');
-        body.push(`    if (${guard}) return new Num(${nativeName(fn)}(${argv}));`);
+        body.push(`    if (${guard}) return mkNum(${nativeName(fn)}(${argv}));`);
       }
       body.push(...this.stmts(ar.body, '    '));
       const last = ar.body[ar.body.length - 1];
@@ -328,7 +432,7 @@ class Emitter {
     if (!ar) unsupported(`export ${name}`, 'function has no fixed arity');
     const wasm = wasmExportName(name);
     const call = (argNames: string[]) => {
-      const a = argNames.map((n) => `new Num(${n})`);
+      const a = argNames.map((n) => `mkNum(${n})`);
       return a.length <= MAX_DIRECT ? `asFn(g_${mangle(name)}).call${a.length}(${a.join(', ')})` : `asFn(g_${mangle(name)}).invoke([${a.join(', ')}])`;
     };
     const names = ar.params.map((_, i) => `a${i}`);
@@ -347,7 +451,7 @@ class Emitter {
     const init = this.stmts(this.mod.body, '  ');
     const wrappers = exports.flatMap((n) => [...this.exportWrapper(n), '']);
     const header = [
-      `import { Value, Fn, Num, Str, Kw, NIL, TRUE, FALSE, bool_, truthy, asFn, arityError, throwValue, toF64, add, sub, mul, div, neg, inc, dec, rem, mod, lt, gt, lte, gte, isZero, isPos, isNeg, eq, println, str } from "${RUNTIME_MODULE}";`,
+      `import { ${RUNTIME_IMPORTS.join(', ')} } from "${RUNTIME_MODULE}";`,
       '',
     ];
     const globalDecls = [...this.globals].map((g) => `let g_${mangle(g)}: Value = NIL;`);
@@ -359,6 +463,7 @@ class Emitter {
       'function nmod(a: f64, b: f64): f64 {\n  return ((a % b) + b) % b;\n}',
       '',
       ...natives,
+      ...this.coreClasses.flatMap((c) => [c, '']),
       ...fnClasses,
       'function __kiso_init(): void {',
       ...init,
