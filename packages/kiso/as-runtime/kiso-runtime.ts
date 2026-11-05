@@ -220,6 +220,12 @@ function hashStr(s: string): i32 {
 
 export function hashOf(v: Value): i32 {
   if (v === NIL) return 0;
+  if (v instanceof Rec) {
+    const r = changetype<Rec>(v);
+    let h: i32 = 17;
+    for (let i = 0; i < r.nFields(); i++) h = h * 31 + hashOf(r.fieldAt(i));
+    return h;
+  }
   if (v === TRUE) return 1231;
   if (v === FALSE) return 1237;
   if (v instanceof Num) {
@@ -261,6 +267,14 @@ export function hashOf(v: Value): i32 {
 
 export function eq(a: Value, b: Value): bool {
   if (a === b) return true;
+  if (a instanceof Rec) {
+    if (!(b instanceof Rec)) return false;
+    const x = changetype<Rec>(a);
+    const y = changetype<Rec>(b);
+    if (x.typeName() != y.typeName()) return false;
+    for (let i = 0; i < x.nFields(); i++) if (!eq(x.fieldAt(i), y.fieldAt(i))) return false;
+    return true;
+  }
   if (a instanceof Num) return b instanceof Num && changetype<Num>(a).v == changetype<Num>(b).v;
   if (a instanceof Str) return b instanceof Str && changetype<Str>(a).v == changetype<Str>(b).v;
   if (a instanceof Kw) {
@@ -396,6 +410,7 @@ function asVec(v: Value): Vec {
 
 export function kcount(v: Value): Value {
   if (v === NIL) return mkNum(0);
+  if (v instanceof Rec) return mkNum(<f64>changetype<Rec>(v).nFields());
   if (v instanceof Vec) return mkNum(<f64>changetype<Vec>(v).n);
   if (v instanceof MapV) return mkNum(<f64>changetype<MapV>(v).n);
   if (v instanceof SetV) return mkNum(<f64>changetype<SetV>(v).m.n);
@@ -470,6 +485,11 @@ export function knth(c: Value, i: Value): Value {
 }
 
 export function kget3(c: Value, k: Value, dflt: Value): Value {
+  if (c instanceof Rec) {
+    const r = changetype<Rec>(c);
+    const i = recIndex(r, k);
+    return i >= 0 ? r.fieldAt(i) : dflt;
+  }
   if (c instanceof SetV) {
     const m = changetype<SetV>(c).m;
     const j = mapFind(m, k);
@@ -496,6 +516,12 @@ export function kget(c: Value, k: Value): Value {
 }
 
 export function kassoc(c: Value, k: Value, v: Value): Value {
+  if (c instanceof Rec) {
+    const r = changetype<Rec>(c);
+    const i = recIndex(r, k);
+    if (i < 0) abort("assoc of a key that is not a field is not supported on records");
+    return r.withFieldAt(i, v);
+  }
   if (c === NIL) return mapAssoc(changetype<MapV>(EMPTY_MAP), k, v);
   if (c instanceof MapV) return mapAssoc(changetype<MapV>(c), k, v);
   if (c instanceof Vec) {
@@ -538,6 +564,7 @@ export function kdissoc(c: Value, k: Value): Value {
 }
 
 export function kcontains(c: Value, k: Value): bool {
+  if (c instanceof Rec) return recIndex(changetype<Rec>(c), k) >= 0;
   if (c instanceof MapV) return mapFind(changetype<MapV>(c), k) >= 0;
   if (c instanceof SetV) return mapFind(changetype<SetV>(c).m, k) >= 0;
   if (c instanceof Vec && k instanceof Num) {
@@ -702,6 +729,44 @@ export function kgetIn3(m: Value, path: Value, dflt: Value): Value {
 }
 export function kgetIn(m: Value, path: Value): Value {
   return kgetIn3(m, path, NIL);
+}
+
+// -- Records and reify (D23) ---------------------------------------------------
+
+/** Base of generated defrecord classes; field access is by index so the generic ops need no reflection. */
+export abstract class Rec extends Value {
+  abstract typeName(): string;
+  abstract nFields(): i32;
+  abstract fieldName(i: i32): string;
+  abstract fieldAt(i: i32): Value;
+  abstract withFieldAt(i: i32, v: Value): Rec;
+}
+
+function recIndex(r: Rec, k: Value): i32 {
+  if (!(k instanceof Kw)) return -1;
+  const kw = changetype<Kw>(k);
+  if (kw.ns.length > 0) return -1;
+  for (let i = 0; i < r.nFields(); i++) if (r.fieldName(i) == kw.name) return i;
+  return -1;
+}
+
+/** `reify` instance: protocol method implementations keyed "Protocol/method/argc". */
+export class Reified extends Value {
+  constructor(
+    public keys: Array<string>,
+    public fns: Array<Fn>,
+  ) {
+    super();
+  }
+  find(key: string): Fn | null {
+    for (let i = 0; i < this.keys.length; i++) if (this.keys[i] == key) return this.fns[i];
+    return null;
+  }
+}
+
+export function noImpl(protocol: string, method: string, v: Value): Value {
+  abort("No implementation of method " + method + " of protocol " + protocol + " found for " + toStr(v, true));
+  return NIL;
 }
 
 // -- Sets, lists/seqs, higher-order functions (D21) ----------------------------
@@ -1007,6 +1072,16 @@ function quote(s: string): string {
 
 export function toStr(v: Value, readable: bool): string {
   if (v === NIL) return readable ? "nil" : "";
+  if (v instanceof Rec) {
+    const r = changetype<Rec>(v);
+    let out = "#" + r.typeName() + "{";
+    for (let i = 0; i < r.nFields(); i++) {
+      if (i > 0) out += ", ";
+      out += ":" + r.fieldName(i) + " " + elemStr(r.fieldAt(i), readable);
+    }
+    return out + "}";
+  }
+  if (v instanceof Reified) return "#object[reify]";
   if (v === TRUE) return "true";
   if (v === FALSE) return "false";
   if (v instanceof Num) return fmtNum(changetype<Num>(v).v);

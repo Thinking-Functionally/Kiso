@@ -207,7 +207,7 @@ function expr(node: Node, out: LStmt[], ctx: Ctx): LExpr {
         kind: node.type,
         name: node.name,
         fields: node.fields,
-        protocols: lowerImpls(node.protocols, new Set(node.fields), out, ctx),
+        protocols: lowerImpls(node.protocols, new Set(node.fields), out, ctx, node.name),
       });
       return NIL;
     }
@@ -372,12 +372,12 @@ function lowerCase(node: CaseNode, out: LStmt[], ctx: Ctx, sink: Sink, recur: Re
   build(0, out);
 }
 
-function lowerImpls(impls: ProtocolImplNode[], fields: Set<string>, out: LStmt[], ctx: Ctx): LProtocolImpl[] {
+function lowerImpls(impls: ProtocolImplNode[], fields: Set<string>, out: LStmt[], ctx: Ctx, owner: string | null = null): LProtocolImpl[] {
   return impls.map((impl) => ({
     protocol: expr(impl.protocol, out, ctx),
     methods: impl.methods.map((m) => ({
       name: m.name,
-      fn: lowerFnArities(m.name, [{ params: m.params, restParam: null, body: m.body }], ctx, fields),
+      fn: lowerFnArities(null, [{ params: m.params, restParam: null, body: m.body }], ctx, fields, owner),
     })),
   }));
 }
@@ -391,6 +391,7 @@ function lowerFnArities(
   arities: FnNode['arities'],
   ctx: Ctx,
   fields: Set<string>,
+  owner: string | null = null,
 ): LClosure {
   const id = ctx.mod.functions.length;
   ctx.mod.functions.push(null);
@@ -413,6 +414,7 @@ function lowerFnArities(
     name,
     captures: [...fs.captures.keys()],
     fields: [...fields],
+    owner,
     arities: lowered,
   };
   return {

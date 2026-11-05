@@ -380,6 +380,23 @@ drives `asc`; `assemblyscript` is an optional peer dependency (dynamic import, c
 [--runtime minimal|stub|incremental]` and `kiso run <file> [-- args]`; `compile --target as` still emits `.as.ts`.
 Not yet: `host/fetch` (async; belongs with the serverless target, M5), WASI. Unknown `host/` names and wrong arity are compile errors.
 
+### D23: AS deftype/defrecord/protocols (M4.5)
+
+**Date**: 2026-11-05
+
+**Decision**: Closed-world, statically dispatched. (1) `deftype`/`defrecord` -> class `T_<Name>` (records extend runtime `Rec`:
+index-based fields give keyword lookup, `get`, `assoc` on existing fields, `contains?`, `count`, structural `=`/hash and
+`#Name{:f v}` printing without reflection). `->Name`, `map->Name`, `(Name. ...)` compile to direct constructors, also usable as values.
+(2) `defprotocol` is compile-time only; each `protocolFn` global becomes a generated `PF_*` Fn whose `callN` is an `instanceof` chain over
+every implementation in the module (user types, then builtin targets, `reify`, then `default`/`Object`), else `noImpl` aborts.
+(3) Methods are ordinary `Fn_<id>` singletons (`MF_<id>`) with `const s_ = changetype<T_X>(this-param)`; fields read `s_.f_x`.
+(4) `extend-type` targets: nil, Number, String, Keyword, Boolean, Vector/List/Map/Set/Fn (JS and Clojure names), `default`/`Object`, or a type of
+this module. (5) `reify` -> runtime `Reified` holding `"Proto/method/argc"` -> Fn, so closures capture normally.
+(6) Protocol methods are lowered with no self-name, otherwise `(sz l)` inside `sz` resolved to the method itself.
+**Rejected**: protocols not defined by `defprotocol` in the module (e.g. `Object`, `IFn`), `deftype` inside functions, extra keys via `assoc`/`dissoc` on records,
+`instance?`/`satisfies?`, mutable fields. **JS backend bugs found (not fixed)**: record methods emit bare `n` instead of `this.n`, so tests assert
+Clojure-correct output directly instead of diffing against JS.
+
 ## Known Issues
 
 All previously tracked issues (I1–I6) have been resolved. See `archive/bugs-fixed.md` for details.

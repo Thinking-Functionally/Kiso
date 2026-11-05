@@ -14,8 +14,8 @@ describe('emitter-as: source shape', () => {
   it('exports ^:export fns through the f64 ABI', () => {
     expect(asOf('(defn ^:export sq [x] (* x x))')).toContain('export function sq(a0: f64): f64');
   });
-  it('rejects deftype with a clear message', () => {
-    expect(() => asOf('(deftype P [x])')).toThrow(/deftype/);
+  it('rejects protocols that are not defined in the module', () => {
+    expect(() => asOf('(deftype P [x] Object (toString [_] "p"))')).toThrow(/defprotocol/);
   });
 });
 

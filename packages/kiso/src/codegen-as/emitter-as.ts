@@ -4,7 +4,7 @@
 // class extending `Fn`; captures are constructor fields. Arities with <= 3 params
 // override `callN`; `invoke(args)` dispatches on length.
 
-import type { LExpr, LFunction, LModule, LStmt, LVar, LClosure } from './lowered.js';
+import type { LExpr, LFunction, LModule, LStmt, LVar, LClosure, LProtocolImpl } from './lowered.js';
 import { AsUnsupportedError } from './supported.js';
 import { mangle } from './mangle.js';
 import { inferNumericLocals, isArithCall, isNumTyped } from './numeric-locals.js';
@@ -111,7 +111,7 @@ const RUNTIME_IMPORTS = [
   'println', 'prn', 'prStr', 'str',
   'SetV', 'ExInfo', 'EMPTY_SET', 'mkSet', 'hashSet', 'kset', 'kdisj', 'isSet', 'isList', 'isSeq', 'items', 'klist', 'kseq', 'krest', 'knext',
   'kcons', 'kemptyOf', 'kreverse', 'kconcat', 'ktake', 'kdrop', 'kmap2', 'kmap3', 'kmapv', 'kfilter', 'kfilterv', 'kremove', 'ksome',
-  'kevery', 'kinto', 'krange1', 'krange2', 'krange3', 'kapply', 'kexInfo', 'kexMessage', 'kexData', 'restOf',
+  'Rec', 'Reified', 'noImpl', 'kevery', 'kinto', 'krange1', 'krange2', 'krange3', 'kapply', 'kexInfo', 'kexMessage', 'kexData', 'restOf',
 ];
 
 function unsupported(construct: string, reason: string): never {
@@ -124,7 +124,37 @@ export function wasmExportName(name: string): string {
   return n.length > 0 ? n : '_';
 }
 
+type TypeInfo = { name: string; cls: string; fields: string[]; record: boolean };
+type ImplTarget = { kind: 'user'; cls: string } | { kind: 'test'; test: (x: string) => string } | { kind: 'default' };
+type Impl = { protocol: string; method: string; argc: number; fnId: number; target: ImplTarget };
+
+// extend-type targets (JS-style and Clojure-style names) -> runtime class tests
+const BUILTIN_TARGETS: Record<string, ImplTarget> = (() => {
+  const t = (test: (x: string) => string): ImplTarget => ({ kind: 'test', test });
+  const num = t((x) => `${x} instanceof Num`);
+  const str = t((x) => `${x} instanceof Str`);
+  const vec = t((x) => `(${x} instanceof Vec && !changetype<Vec>(${x}).list)`);
+  const list = t((x) => `(${x} instanceof Vec && changetype<Vec>(${x}).list)`);
+  const map = t((x) => `${x} instanceof MapV`);
+  const set = t((x) => `${x} instanceof SetV`);
+  const fn = t((x) => `${x} instanceof Fn`);
+  return {
+    Number: num, number: num, String: str, string: str, Keyword: t((x) => `${x} instanceof Kw`),
+    Boolean: t((x) => `(${x} === TRUE || ${x} === FALSE)`), boolean: t((x) => `(${x} === TRUE || ${x} === FALSE)`),
+    Vector: vec, PersistentVector: vec, vector: vec, List: list, PersistentList: list, list,
+    Map: map, PersistentHashMap: map, PersistentArrayMap: map, map, Set: set, PersistentHashSet: set, set,
+    Fn: fn, Function: fn, function: fn, default: { kind: 'default' }, Object: { kind: 'default' },
+  };
+})();
+
 class Emitter {
+  private types = new Map<string, TypeInfo>();
+  private impls: Impl[] = [];
+  private protocols = new Map<string, string[]>();
+  private protoFns = new Map<string, { protocol: string; method: string }>();
+  private hoisted = new Set<LStmt>();
+  private reifyArgc = new Map<string, Set<number>>();
+  private methodSingletons = new Set<number>();
   private consts = new Map<string, string>();
   private constDecls: string[] = [];
   private globals = new Set<string>();
@@ -135,6 +165,7 @@ class Emitter {
   constructor(private mod: LModule) {
     for (const f of mod.functions) this.fnById.set(f.id, f);
     this.collectGlobals(mod.body);
+    this.collectTypes(mod.body);
     for (const f of mod.functions) if (new NumericCheck(f, this.globals).ok()) this.native.add(f.id);
   }
 
@@ -146,6 +177,144 @@ class Emitter {
         this.collectGlobals(s.else);
       } else if (s.type === 'loop') this.collectGlobals(s.body);
     }
+  }
+
+  private isGlobalCall(e: LExpr | null | undefined, name: string): e is Extract<LExpr, { type: 'invoke' }> {
+    return !!e && e.type === 'invoke' && e.fn.type === 'var' && e.fn.kind === 'global' && e.fn.name === name && !this.globals.has(name);
+  }
+
+  /** Protocols and types are closed-world: found up front so dispatchers can be generated statically. */
+  private collectTypes(body: LStmt[]): void {
+    for (const s of body) {
+      if (s.type === 'def' && this.isGlobalCall(s.value, 'defprotocol')) {
+        const [nameArg, methodsArg] = s.value.args;
+        if (nameArg?.type !== 'literal' || methodsArg?.type !== 'vector') unsupported('defprotocol', 'unexpected shape');
+        this.protocols.set(String(nameArg.value), methodsArg.items.map((m) => String((m as { value: unknown }).value)));
+        this.hoisted.add(s);
+      } else if (s.type === 'def' && this.isGlobalCall(s.value, 'protocolFn')) {
+        const [protoArg, methodArg] = s.value.args;
+        if (protoArg?.type !== 'var' || methodArg?.type !== 'literal') unsupported('protocolFn', 'unexpected shape');
+        this.protoFns.set(s.name, { protocol: protoArg.name, method: String(methodArg.value) });
+      } else if (s.type === 'type-def') {
+        this.types.set(s.name, { name: s.name, cls: `T_${mangle(s.name)}`, fields: s.fields, record: s.kind === 'defrecord' });
+        this.hoisted.add(s);
+      }
+    }
+    for (const s of body) {
+      if (s.type === 'type-def') this.registerImpls({ kind: 'user', cls: this.types.get(s.name)!.cls }, s.protocols);
+      else if (s.type === 'extend-type') {
+        this.registerImpls(this.extendTarget(s.target), s.protocols);
+        this.hoisted.add(s);
+      }
+    }
+  }
+
+  private extendTarget(t: LExpr): ImplTarget {
+    if (t.type === 'literal' && t.jsType === 'null') return { kind: 'test', test: (x) => `${x} === NIL` };
+    if (t.type === 'var' && t.kind === 'global') {
+      const user = this.types.get(t.name);
+      if (user) return { kind: 'user', cls: user.cls };
+      const builtin = BUILTIN_TARGETS[t.name];
+      if (builtin) return builtin;
+      return unsupported(`extend-type ${t.name}`, `unknown type; supported: nil, ${Object.keys(BUILTIN_TARGETS).join(', ')} or a deftype/defrecord of this module`);
+    }
+    return unsupported('extend-type', 'target must be nil or a type name');
+  }
+
+  private protocolName(p: LExpr): string {
+    const name = p.type === 'var' ? p.name : '';
+    if (!this.protocols.has(name)) unsupported(`protocol ${name || '?'}`, 'only protocols defined with defprotocol in this module are supported');
+    return name;
+  }
+
+  private registerImpls(target: ImplTarget, protocols: LProtocolImpl[]): void {
+    for (const p of protocols) {
+      const protocol = this.protocolName(p.protocol);
+      for (const m of p.methods) {
+        const fn = this.fnById.get(m.fn.fnId)!;
+        if (fn.captures.length > 0) unsupported(`method ${m.name}`, 'type/extend-type methods cannot capture local variables');
+        this.impls.push({ protocol, method: m.name, argc: fn.arities[0]!.params.length, fnId: fn.id, target });
+        if (!this.methodSingletons.has(fn.id)) {
+          this.methodSingletons.add(fn.id);
+          this.constDecls.push(`const MF_${fn.id}: Fn_${fn.id} = new Fn_${fn.id}();`);
+        }
+      }
+    }
+  }
+
+  private typeClass(t: TypeInfo): string[] {
+    const fs = t.fields;
+    const prop = (f: string) => `f_${mangle(f)}`;
+    const lines = [`class ${t.cls} extends ${t.record ? 'Rec' : 'Value'} {`];
+    lines.push(fs.length > 0 ? `  constructor(${fs.map((f) => `public ${prop(f)}: Value`).join(', ')}) {` : '  constructor() {', '    super();', '  }');
+    if (t.record) {
+      const sw = (body: (i: number) => string, dflt: string) =>
+        fs.length === 0 ? [`    return ${dflt};`] : ['    switch (i) {', ...fs.map((_, i) => `      case ${i}: return ${body(i)};`), '    }', `    return ${dflt};`];
+      lines.push(
+        `  typeName(): string {
+    return ${JSON.stringify(t.name)};
+  }`,
+        `  nFields(): i32 {
+    return ${fs.length};
+  }`,
+        '  fieldName(i: i32): string {', ...sw((i) => JSON.stringify(fs[i]), '""'), '  }',
+        '  fieldAt(i: i32): Value {', ...sw((i) => `this.${prop(fs[i]!)}`, 'NIL'), '  }',
+        `  withFieldAt(i: i32, v: Value): Rec {
+    return new ${t.cls}(${fs.map((f, i) => `i == ${i} ? v : this.${prop(f)}`).join(', ')});
+  }`,
+        `  static fromMap(m: Value): Value {
+    return new ${t.cls}(${fs.map((f) => `kget(m, ${this.expr({ type: 'keyword', ns: null, name: f })})`).join(', ')});
+  }`,
+      );
+    }
+    lines.push('}');
+    return lines;
+  }
+
+  private ctorOf(name: string): { type: TypeInfo; map: boolean } | null {
+    if (name.startsWith('map->')) {
+      const t = this.types.get(name.slice(5));
+      return t?.record ? { type: t, map: true } : null;
+    }
+    if (name.startsWith('->')) {
+      const t = this.types.get(name.slice(2));
+      return t ? { type: t, map: false } : null;
+    }
+    return null;
+  }
+
+  private protocolClass(global: string, protocol: string, method: string): string[] {
+    const impls = this.impls.filter((i) => i.protocol === protocol && i.method === method);
+    const argcs = [...new Set([...impls.map((i) => i.argc), ...(this.reifyArgc.get(`${protocol}/${method}`) ?? [])])].sort((a, b) => a - b);
+    const callOn = (f: string, argc: number, a: string[]) => (argc <= MAX_DIRECT ? `${f}.call${argc}(${a.join(', ')})` : `${f}.invoke([${a.join(', ')}])`);
+    const chain = (argc: number, a: string[]): string[] => {
+      const out: string[] = [];
+      const mine = impls.filter((i) => i.argc === argc);
+      let dflt: Impl | undefined;
+      for (const i of mine) {
+        const call = `return ${callOn(`MF_${i.fnId}`, argc, a)};`;
+        if (i.target.kind === 'default') dflt = i;
+        else out.push(`    if (${i.target.kind === 'user' ? `${a[0]} instanceof ${i.target.cls}` : i.target.test(a[0]!)}) ${call}`);
+      }
+      out.push(`    if (${a[0]} instanceof Reified) {`, `      const f = changetype<Reified>(${a[0]}).find(${JSON.stringify(`${protocol}/${method}/${argc}`)});`, `      if (f !== null) return ${callOn('f', argc, a)};`, '    }');
+      if (dflt) out.push(`    return ${callOn(`MF_${dflt.fnId}`, argc, a)};`);
+      else out.push(`    return noImpl(${JSON.stringify(protocol)}, ${JSON.stringify(method)}, ${a[0]});`);
+      return out;
+    };
+    const lines = [`class PF_${mangle(global)} extends Fn {`];
+    const dispatch: string[] = [];
+    for (const argc of argcs) {
+      if (argc === 0) continue;
+      const a = Array.from({ length: argc }, (_, i) => `a${i}`);
+      if (argc <= MAX_DIRECT) {
+        lines.push(`  call${argc}(${a.map((x) => `${x}: Value`).join(', ')}): Value {`, ...chain(argc, a), '  }');
+        dispatch.push(`      case ${argc}: return this.call${argc}(${a.map((_, i) => `args[${i}]`).join(', ')});`);
+      } else {
+        dispatch.push(`      case ${argc}: {`, ...a.map((x, i) => `        const ${x} = args[${i}];`), ...chain(argc, a).map((l) => `    ${l}`), '      }');
+      }
+    }
+    lines.push('  invoke(args: Array<Value>): Value {', '    switch (args.length) {', ...dispatch, '    }', '    return arityError();', '  }', '}');
+    return lines;
   }
 
   // -- constants -------------------------------------------------------------
@@ -192,7 +361,7 @@ class Emitter {
         if (this.globals.has(v.name)) return `g_${mangle(v.name)}`;
         return this.coreFnValue(v.name);
       case 'field':
-        return unsupported('deftype field', 'deftype/defrecord arrive in M4');
+        return `s_.f_${mangle(v.name)}`;
     }
   }
 
@@ -385,6 +554,12 @@ class Emitter {
         if (a.length >= 1) return a.reduce((acc, x) => `k${name}(${acc}, ${x})`);
         break;
       default: {
+        const ctor = this.ctorOf(name);
+        if (ctor) {
+          const want = ctor.map ? 1 : ctor.type.fields.length;
+          if (a.length !== want) return unsupported(`(${name} …)`, `expects ${want} argument(s), got ${a.length}`);
+          return ctor.map ? `${ctor.type.cls}.fromMap(${a[0]})` : `new ${ctor.type.cls}(${a.join(', ')})`;
+        }
         const arr = ARRAY_OPS[name];
         if (arr) return `${arr}([${a.join(', ')}])`;
         return this.tableCall(name, a);
@@ -413,10 +588,28 @@ class Emitter {
         return e.keys.length === 0 ? 'EMPTY_MAP' : `mkMap([${e.keys.flatMap((k, i) => [this.expr(k), this.expr(e.vals[i]!)]).join(', ')}])`;
       case 'set':
         return `mkSet([${this.args(e.items).join(', ')}])`;
-      case 'new':
-        return unsupported('new', 'deftype/defrecord arrive in M4');
-      case 'reify':
-        return unsupported('reify', 'protocols arrive in M4');
+      case 'new': {
+        const t = e.ctor.type === 'var' && e.ctor.kind === 'global' ? this.types.get(e.ctor.name) : undefined;
+        if (!t) return unsupported('new', 'only deftype/defrecord types of this module can be constructed');
+        if (e.args.length !== t.fields.length) return unsupported(`(${t.name}. …)`, `expects ${t.fields.length} argument(s), got ${e.args.length}`);
+        return `new ${t.cls}(${this.args(e.args).join(', ')})`;
+      }
+      case 'reify': {
+        const keys: string[] = [];
+        const fns: string[] = [];
+        for (const p of e.protocols) {
+          const protocol = this.protocolName(p.protocol);
+          for (const m of p.methods) {
+            const argc = this.fnById.get(m.fn.fnId)!.arities[0]!.params.length;
+            const k = `${protocol}/${m.name}`;
+            if (!this.reifyArgc.has(k)) this.reifyArgc.set(k, new Set());
+            this.reifyArgc.get(k)!.add(argc);
+            keys.push(JSON.stringify(`${k}/${argc}`));
+            fns.push(this.closure(m.fn));
+          }
+        }
+        return `new Reified([${keys.join(', ')}], [${fns.join(', ')}])`;
+      }
     }
   }
 
@@ -438,6 +631,9 @@ class Emitter {
         return [`${ind}l_${mangle(s.name)} = ${this.expr(s.value)};`];
       case 'set-global':
       case 'def': {
+        if (s.type === 'def' && this.hoisted.has(s)) return [];
+        const pf = s.type === 'def' ? this.protoFns.get(s.name) : undefined;
+        if (pf) return [`${ind}g_${mangle(s.name)} = new PF_${mangle(s.name)}();`];
         if (s.type === 'set-global' && !this.globals.has(s.name)) unsupported(`set! ${s.name}`, 'unknown global');
         const value = s.type === 'def' ? (s.value ? this.expr(s.value) : 'NIL') : this.expr(s.value);
         return [`${ind}g_${mangle(s.name)} = ${value};`];
@@ -479,9 +675,9 @@ class Emitter {
       case 'try':
         return unsupported('try', 'WebAssembly/AssemblyScript has no catchable exceptions; use ex-info (aborts) and return values for errors');
       case 'type-def':
-        return unsupported(s.kind, 'deftype/defrecord arrive in M4');
+        return this.hoisted.has(s) ? [] : unsupported(s.kind, 'must be defined at the top level of the module');
       case 'extend-type':
-        return unsupported('extend-type', 'protocols arrive in M4');
+        return this.hoisted.has(s) ? [] : unsupported('extend-type', 'must be used at the top level of the module');
       case 'ns':
         if (s.requires.length > 0) unsupported('ns :require', 'module imports arrive in M5');
         return [];
@@ -491,7 +687,6 @@ class Emitter {
   // -- functions -------------------------------------------------------------
 
   private fnClass(fn: LFunction): string[] {
-    if (fn.fields.length > 0) unsupported('deftype method', 'deftype/defrecord arrive in M4');
     const caps = fn.captures.map((c) => `c_${mangle(c)}`);
     const lines: string[] = [`class Fn_${fn.id} extends Fn {`];
     if (caps.length > 0) {
@@ -512,6 +707,11 @@ class Emitter {
         body.push(`    if (${guard}) return mkNum(${nativeName(fn)}(${argv}));`);
       }
       this.nums = inferNumericLocals(ar.body, allParams, this.globals);
+      if (fn.owner) {
+        const t = this.types.get(fn.owner);
+        if (!t || ar.params.length === 0) unsupported(`method of ${fn.owner}`, 'type methods need a `this` parameter');
+        body.push(`    const s_ = changetype<${t.cls}>(l_${mangle(ar.params[0]!)});`);
+      }
       body.push(...this.stmts(ar.body, '    '));
       const last = ar.body[ar.body.length - 1];
       if (!last || (last.type !== 'return' && last.type !== 'loop')) body.push('    return NIL;');
@@ -555,6 +755,8 @@ class Emitter {
     const fnClasses = this.mod.functions.flatMap((f) => [...this.fnClass(f), '']);
     this.nums = inferNumericLocals(this.mod.body, [], this.globals);
     const init = this.stmts(this.mod.body, '  ');
+    const typeClasses = [...this.types.values()].flatMap((t) => [...this.typeClass(t), '']);
+    const protoClasses = [...this.protoFns].flatMap(([g, p]) => [...this.protocolClass(g, p.protocol, p.method), '']);
     const wrappers = exports.flatMap((n) => [...this.exportWrapper(n), '']);
     const header = [
       `import { ${RUNTIME_IMPORTS.join(', ')} } from "${RUNTIME_MODULE}";`,
@@ -571,6 +773,8 @@ class Emitter {
       ...natives,
       ...this.coreClasses.flatMap((c) => [c, '']),
       ...fnClasses,
+      ...typeClasses,
+      ...protoClasses,
       'function __kiso_init(): void {',
       ...init,
       '}',

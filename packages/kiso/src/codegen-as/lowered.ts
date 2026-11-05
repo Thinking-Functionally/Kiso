@@ -72,6 +72,7 @@ export type LFunction = {
   name: string | null;
   captures: string[];
   fields: string[]; // non-empty for deftype/defrecord methods
+  owner: string | null; // type name for deftype/defrecord methods; `this` is the first parameter
   arities: LArity[];
 };
 
