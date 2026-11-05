@@ -9,6 +9,8 @@ export type CliArgs =
       sourceMap: boolean;
       inlineSourceMap: boolean;
       outDir: string | null;
+      target: 'js' | 'as';
+      exports: string[];
     };
 
 export function parseArgs(argv: string[]): CliArgs {
@@ -22,6 +24,8 @@ export function parseArgs(argv: string[]): CliArgs {
       'source-map': { type: 'boolean', default: false },
       'inline-source-map': { type: 'boolean', default: false },
       'out-dir': { type: 'string' },
+      target: { type: 'string' },
+      export: { type: 'string', multiple: true },
     },
   });
 
@@ -47,11 +51,19 @@ export function parseArgs(argv: string[]): CliArgs {
     throw new Error('--source-map and --inline-source-map are mutually exclusive');
   }
 
+  const targetOpt = (values.target as string | undefined) ?? 'js';
+  if (targetOpt !== 'js' && targetOpt !== 'as') {
+    throw new Error(`Unknown --target: ${targetOpt} (expected js or as)`);
+  }
+  const target: 'js' | 'as' = targetOpt;
+
   return {
     command: 'compile',
     targets,
     sourceMap,
     inlineSourceMap,
     outDir: (values['out-dir'] as string) ?? null,
+    target,
+    exports: (values.export as string[] | undefined) ?? [],
   };
 }

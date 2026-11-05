@@ -26,6 +26,8 @@ describe('parseArgs', () => {
       sourceMap: false,
       inlineSourceMap: false,
       outDir: null,
+      target: 'js',
+      exports: [],
     });
   });
 
@@ -37,6 +39,8 @@ describe('parseArgs', () => {
       sourceMap: false,
       inlineSourceMap: false,
       outDir: null,
+      target: 'js',
+      exports: [],
     });
   });
 
@@ -48,6 +52,8 @@ describe('parseArgs', () => {
       sourceMap: true,
       inlineSourceMap: false,
       outDir: null,
+      target: 'js',
+      exports: [],
     });
   });
 
@@ -59,6 +65,8 @@ describe('parseArgs', () => {
       sourceMap: false,
       inlineSourceMap: true,
       outDir: null,
+      target: 'js',
+      exports: [],
     });
   });
 
@@ -70,6 +78,8 @@ describe('parseArgs', () => {
       sourceMap: false,
       inlineSourceMap: false,
       outDir: 'dist/',
+      target: 'js',
+      exports: [],
     });
   });
 
@@ -81,6 +91,8 @@ describe('parseArgs', () => {
       sourceMap: true,
       inlineSourceMap: false,
       outDir: 'dist/',
+      target: 'js',
+      exports: [],
     });
   });
 

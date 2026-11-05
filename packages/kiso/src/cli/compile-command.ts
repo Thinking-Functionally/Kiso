@@ -8,6 +8,8 @@ export type CompileCommandOptions = {
   sourceMap: boolean;
   inlineSourceMap: boolean;
   outDir: string | null;
+  target?: 'js' | 'as';
+  exports?: string[];
 };
 
 export type CompileCommandResult = {
@@ -27,9 +29,12 @@ export function compileCommand(options: CompileCommandOptions): CompileCommandRe
       const result = compile(source, {
         filename: basename(file),
         sourceMap: needsMap,
+        target: options.target,
+        exports: options.exports,
       });
 
-      const jsName = basename(file).replace(/\.cljs$/, '.js');
+      const outExt = options.target === 'as' ? '.as.ts' : '.js';
+      const jsName = basename(file).replace(/\.cljs$/, outExt);
       const outDirPath = options.outDir ?? dirname(file);
       mkdirSync(outDirPath, { recursive: true });
       const outFile = join(outDirPath, jsName);

@@ -5,12 +5,14 @@ import { version } from '../version.js';
 const HELP_TEXT = `Usage: kiso <command> [options]
 
 Commands:
-  compile <file|dir...>   Compile .cljs files to JavaScript
+  compile <file|dir...>   Compile .cljs files (JavaScript by default)
 
 Options:
   --source-map            Generate sidecar .js.map files
   --inline-source-map     Embed source map as base64 in .js
   --out-dir <dir>         Write output to <dir>
+  --target <js|as>        Backend: js (default) or as (AssemblyScript, experimental)
+  --export <name>         (as) Require entry point <name>; repeatable
   -V, --version           Show version
   -h, --help              Show this help
 

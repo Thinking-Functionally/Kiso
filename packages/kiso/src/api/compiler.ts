@@ -9,11 +9,16 @@ import { SourceMapBuilder, type SourceMapV3 } from '../codegen/sourcemap.js';
 import type { Form } from '../reader/form.js';
 import type { Node } from '../analyzer/node.js';
 import { CompileError, wrapError } from './errors.js';
+import { compileAs } from '../codegen-as/compile.js';
 
 export type CompileOptions = {
   filename?: string;
   sourceMap?: boolean;
   codegenHooks?: Record<string, CodegenHook>;
+  /** Backend to generate code with. Defaults to 'js'. */
+  target?: 'js' | 'as';
+  /** AS target only: entry points that must be defined. */
+  exports?: string[];
 };
 
 export type CompileResult = {
@@ -111,6 +116,10 @@ export function compile(source: string, options?: CompileOptions): CompileResult
   } catch (err) {
     if (err instanceof CompileError) throw err;
     throw wrapError(err, 'analyze', filename);
+  }
+
+  if (options?.target === 'as') {
+    return compileAs({ forms, nodes, filename, exports: options.exports });
   }
 
   let code: string;
