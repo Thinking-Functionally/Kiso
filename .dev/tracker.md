@@ -258,6 +258,59 @@ existing Form-2 components are detected and preserved.
 
 **Affected**: `packages/kiso/src/analyzer/macros.ts` (`wrapFinalExpr`, `wrapInFn`, defc expansion).
 
+### D13: AssemblyScript Backend — Additive, AST + Lowering Pass (No Full IR)
+
+**Date**: 2026-11-05
+
+**Decision**: Add an AS backend alongside the JS backend. Existing reader, analyzer, `Node` types,
+`emitter.ts`, runtime and `su` are unchanged. The AS backend consumes `Node[]` and runs a new
+lowering pass (`codegen-as/lower.ts`). No standalone IR until M2/M3 proves it necessary.
+Only touch points: `target` option in `api/compiler.ts` and `--target` in the CLI.
+
+**Rationale**: `emitter.ts` is a single-pass AST → string emitter relying on JS features (IIFE, native
+closures, `arguments.length`) that AS lacks. A lowering pass handles flattening, closure conversion and tail
+analysis without risking the JS backend.
+
+**Affected**: `packages/kiso/src/codegen-as/` (new), `api/compiler.ts`, CLI. See `design/08-assemblyscript-backend.md`.
+
+### D14: Lowered Nodes Live Outside `Node`
+
+**Date**: 2026-11-05
+
+**Decision**: AS-only nodes (`closure`, `fn-table`, `temp-let`, `loop-stmt`, `tail-recur`; later `box`/`unbox`,
+`typed-literal`) are defined in `codegen-as/lowered.ts`, never in `analyzer/node.ts`.
+
+**Rationale**: Keeps the analyzer/JS emitter contract and `CodegenHook` signatures untouched.
+
+### D15: `set!` Split in AS Lowering
+
+**Date**: 2026-11-05
+
+**Decision**: AS accepts `set!` on a var (e.g. from `binding` expansion) and rejects `set!` on interop targets.
+
+**Rationale**: `macros.ts` expands `binding` into `set!`; a blanket rejection would break supported code.
+
+### D16: Exports via `^:export`, Collected from `Form[]`
+
+**Date**: 2026-11-05
+
+**Decision**: Exports use ClojureScript's `^:export`; `-main` is the default CLI entry; `:exports` config
+overrides later. Exports are collected from the original `Form[]` before macro expansion, because
+`Analyzer.analyzeDef` discards metadata and `DefNode` cannot carry it.
+
+**Rationale**: Idiomatic for ClojureScript developers and requires no analyzer change. If original `Form[]`
+is not reachable from `compiler.ts` without changes, open a new decision.
+
+### D17: Explicit AS Subset, No `as-raw`
+
+**Date**: 2026-11-05
+
+**Decision**: The AS backend supports an explicit subset; unsupported constructs fail at compile time with
+location and reason. Host capabilities come from the `host/` namespace (plain `invoke`, resolved in lowering).
+No `as-raw` escape hatch. Differential tests cover only features supported by both backends.
+
+**Rationale**: Predictable behavior; `as-raw` would bypass subset checks and couple user code to runtime internals.
+
 ## Known Issues
 
 All previously tracked issues (I1–I6) have been resolved. See `archive/bugs-fixed.md` for details.
