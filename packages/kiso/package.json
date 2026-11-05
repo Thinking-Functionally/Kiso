@@ -37,6 +37,7 @@
   },
   "files": [
     "dist/",
+    "as-runtime/",
     "bin/"
   ],
   "publishConfig": {

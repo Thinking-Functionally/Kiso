@@ -32,9 +32,8 @@ describe('compile target option', () => {
     expect(err.message).toMatch(/a/);
   });
 
-  it("fails clearly while the AS emitter is not implemented", () => {
-    const err = catchErr(() => compile('(def a 1)', { target: 'as' }));
-    expect(err.message).toMatch(/not implemented/i);
+  it('returns AssemblyScript source for target as', () => {
+    expect(compile('(def a 1)', { target: 'as' }).code).toContain('g_a');
   });
 });
 

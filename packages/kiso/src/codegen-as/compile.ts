@@ -3,8 +3,9 @@
 import type { Form } from '../reader/form.js';
 import type { Node } from '../analyzer/node.js';
 import { CompileError } from '../api/errors.js';
-import { checkEntries } from './collect-exports.js';
+import { checkEntries, collectExports } from './collect-exports.js';
 import { lowerModule, AsUnsupportedError } from './lower.js';
+import { emitAs } from './emitter-as.js';
 
 export type AsCompileInput = {
   forms: Form[];
@@ -25,7 +26,9 @@ export function compileAs(input: AsCompileInput): { code: string } {
   }
 
   try {
-    lowerModule(nodes);
+    const mod = lowerModule(nodes);
+    const names = [...new Set([...collectExports(forms).map((e) => e.name), ...(exports ?? [])])];
+    return { code: emitAs(mod, { exports: names }) };
   } catch (err) {
     if (err instanceof AsUnsupportedError) {
       const form = forms[err.nodeIndex];
@@ -33,6 +36,4 @@ export function compileAs(input: AsCompileInput): { code: string } {
     }
     throw err;
   }
-
-  throw new CompileError('AssemblyScript emitter is not implemented yet (milestone M2)', 'codegen', filename);
 }
