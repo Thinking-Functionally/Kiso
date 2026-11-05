@@ -51,6 +51,7 @@
   "author": "chaploud",
   "license": "MIT",
   "devDependencies": {
-    "@types/node": "^25.3.3"
+    "@types/node": "^25.3.3",
+    "assemblyscript": "^0.28.20"
   }
 }

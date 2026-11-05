@@ -453,7 +453,15 @@ function expandDefn(items: Form[], form: Form): Form {
   // Skip attr-map
   if (idx < items.length && items[idx]!.data.type === 'map') idx++;
   const fnBody = items.slice(idx);
-  const fnForm = makeList([sym('fn*'), name, ...fnBody]);
+  // ^:export / ^:private wrap the name as (with-meta sym meta); fn* needs the bare symbol
+  let fnName = name;
+  if (name.data.type === 'list') {
+    const inner = name.data.items;
+    if (inner.length >= 2 && inner[0]!.data.type === 'symbol' && inner[0]!.data.name === 'with-meta') {
+      fnName = inner[1]!;
+    }
+  }
+  const fnForm = makeList([sym('fn*'), fnName, ...fnBody]);
   if (docForm) {
     return makeList([sym('def'), name, docForm, fnForm], ...loc(form));
   }
