@@ -31,6 +31,12 @@ describe('lowerModule: flattening (M1.8)', () => {
     expect(() => lower('(js* "1")')).toThrow(AsUnsupportedError);
   });
 
+  it('does not spill a global callee when an argument emits statements', () => {
+    const m = lower('(println (if a 1 2))');
+    const call = m.body.find((s) => s.type === 'expr') as Extract<LStmt, { type: 'expr' }>;
+    expect(call.expr).toMatchObject({ type: 'invoke', fn: { type: 'var', name: 'println', kind: 'global' } });
+  });
+
   it('flattens expression-position if into a temp', () => {
     const m = lower('(def x (if a 1 2))');
     expect(types(m.body)).toEqual(['let', 'if', 'def']);
@@ -40,10 +46,10 @@ describe('lowerModule: flattening (M1.8)', () => {
 
   it('spills earlier arguments when a later argument needs statements', () => {
     const m = lower('(f (g) (if a 1 2))');
-    // global vars are spilled too: a later statement could rebind them
-    expect(types(m.body)).toEqual(['let', 'let', 'let', 'if', 'expr']);
-    const second = m.body[1] as Extract<LStmt, { type: 'let' }>;
-    expect(second.init).toMatchObject({ type: 'invoke' });
+    // the callee `f` stays in place; the earlier argument `(g)` is spilled
+    expect(types(m.body)).toEqual(['let', 'let', 'if', 'expr']);
+    const first = m.body[0] as Extract<LStmt, { type: 'let' }>;
+    expect(first.init).toMatchObject({ type: 'invoke' });
   });
 
   it('keeps nested lets unique so shadowing is safe', () => {

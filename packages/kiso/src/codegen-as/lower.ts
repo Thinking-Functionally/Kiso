@@ -95,14 +95,15 @@ function isAtomic(e: LExpr): boolean {
 }
 
 /** Lower nodes left-to-right; earlier results are spilled if a later node emits statements. */
-function exprs(nodes: Node[], out: LStmt[], ctx: Ctx): LExpr[] {
+function exprs(nodes: Node[], out: LStmt[], ctx: Ctx, headIsCallee = false): LExpr[] {
   const results: LExpr[] = [];
   for (const n of nodes) {
     let at = out.length;
     const e = expr(n, out, ctx);
     if (out.length > at) {
       for (let i = 0; i < results.length; i++) {
-        if (isAtomic(results[i]!)) continue;
+        // A global callee is resolved at call time, so it never needs a temp
+        if (isAtomic(results[i]!) || (headIsCallee && i === 0)) continue;
         const t = ctx.fs.temp();
         out.splice(at++, 0, { type: 'let', name: t, init: results[i]! });
         results[i] = { type: 'var', name: t, kind: 'local' };
@@ -143,7 +144,7 @@ function expr(node: Node, out: LStmt[], ctx: Ctx): LExpr {
       if (node.fn.type === 'var-ref' && node.fn.name.startsWith('host/')) {
         return { type: 'host-call', name: node.fn.name, args: exprs(node.args, out, ctx) };
       }
-      const [fn, ...args] = exprs([node.fn, ...node.args], out, ctx);
+      const [fn, ...args] = exprs([node.fn, ...node.args], out, ctx, true);
       return { type: 'invoke', fn: fn!, args };
     }
     case 'new': {
