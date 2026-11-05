@@ -1,6 +1,20 @@
 # 08 — AssemblyScript Backend
 
-Status: **Design (M0)**. No implementation yet.
+Status: **M0 and M1 complete** (lowering). The AS emitter (M2) is not implemented yet.
+
+## M1 Outcome
+
+- `codegen-as/supported.ts`: rejects JS-only constructs (`AsUnsupportedError`, with node index mapped to line/col in `compile.ts`).
+- `codegen-as/lowered.ts` + `lower.ts`: `Node[]` → `LModule` (statement-oriented IR):
+  - **Flattening**: expression-position `if/let/try/loop/case*/letfn` become statements + temps. Argument evaluation order is preserved by spilling earlier non-atomic arguments (including global vars) when a later argument emits statements.
+  - **Closures**: by-value captures resolved through enclosing functions (own scope tracking; the analyzer's `var-ref.local` flag is unreliable because top-level defs are also marked local). `letfn` creates closures together; named fns reference themselves via kind `self`; deftype/defrecord fields are kind `field`.
+  - **Tail position**: sinks (`return` / `assign` / `loop-exit`) validate `recur`; recur across `try`, outside tail position or with wrong arity is a compile error. Arities using recur are wrapped in a `loop`.
+  - **Arities**: multi-arity and variadic fns become explicit `LArity` lists.
+  - **Host calls**: `host/…` invokes become `host-call`.
+- `collect-exports.ts`: `^:export` + `-main`, from original `Form[]`; `compileAs` validates `--export` names.
+- `compile(source, { target: 'as', exports })` and `kiso compile --target as --export <name>`; `compileAs` currently throws "emitter not implemented" after successful lowering.
+- Smoke test over `.dev/codegen-samples/cljs`: 11/16 lower; the other 5 use `js/` or interop (expected rejections).
+
 
 ## Goal
 

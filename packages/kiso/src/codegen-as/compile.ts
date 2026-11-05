@@ -4,7 +4,7 @@ import type { Form } from '../reader/form.js';
 import type { Node } from '../analyzer/node.js';
 import { CompileError } from '../api/errors.js';
 import { checkEntries } from './collect-exports.js';
-import { checkSupported, AsUnsupportedError } from './supported.js';
+import { lowerModule, AsUnsupportedError } from './lower.js';
 
 export type AsCompileInput = {
   forms: Form[];
@@ -25,7 +25,7 @@ export function compileAs(input: AsCompileInput): { code: string } {
   }
 
   try {
-    checkSupported(nodes);
+    lowerModule(nodes);
   } catch (err) {
     if (err instanceof AsUnsupportedError) {
       const form = forms[err.nodeIndex];

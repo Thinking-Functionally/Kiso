@@ -10,7 +10,10 @@ Session handover document. Read at session start.
 
 ## Current Task
 
-(empty — pick from queue)
+AssemblyScript backend, M2 (vertical slice): `runtime-as/` skeleton + `emitter-as.ts` for
+`defn`/arithmetic/`if`/`let`/`loop`/`println`, run on Node, differential test + benchmark harness.
+M0/M1 done (design `.dev/design/08-assemblyscript-backend.md`, decisions D13–D17, lowering pass in
+`packages/kiso/src/codegen-as/`). Needs `assemblyscript` (asc) as a dev dependency.
 
 ## Task Queue
 
