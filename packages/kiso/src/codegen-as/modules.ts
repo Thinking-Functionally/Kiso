@@ -39,7 +39,10 @@ function splitNs(f: Form): { ns: string; names: Set<string>; stripped: Form } {
   return { ns, names, stripped: { ...f, data: { type: 'list', items: rest } } };
 }
 
-type Spec = { ns: string; alias: string | null; form: Form };
+type Spec = { ns: string; alias: string | null; refer: string[]; form: Form };
+
+// Library namespaces provided by the AS runtime/prelude under a name prefix (`str/join` -> `cljstr-join`).
+const BUILTIN: Record<string, string> = { 'clojure.string': 'cljstr-', 'clojure.set': 'cljset-' };
 
 function requireSpecs(f: Form): Spec[] {
   const out: Spec[] = [];
@@ -50,27 +53,39 @@ function requireSpecs(f: Form): Spec[] {
       const si = spec.data.type === 'vector' ? (spec.data.items as Form[]) : [spec];
       const target = sym(si[0])!.name;
       let alias: string | null = null;
+      const refer: string[] = [];
       for (let i = 1; i < si.length; i += 2) {
         const k = kw(si[i]);
         if (k === 'as') alias = sym(si[i + 1])?.name ?? null;
-        else if (k !== 'refer') throw new LinkError(`unsupported :require option :${k} for ${target}`);
+        else if (k === 'refer') for (const r of items(si[i + 1]!) ?? []) refer.push(sym(r)?.name ?? '');
+        else throw new LinkError(`unsupported :require option :${k} for ${target}`);
       }
-      out.push({ ns: target, alias, form: spec });
+      out.push({ ns: target, alias, refer, form: spec });
     }
   }
   return out;
 }
 
-function rewrite(f: Form, map: Map<string, true>): Form {
+type Rewrites = { aliases: Map<string, string>; renames: Map<string, string>; builtin: boolean };
+
+function rewrite(f: Form, rw: Rewrites): Form {
   const d = f.data;
-  if (d.type === 'symbol' && d.ns !== null && map.has(d.ns)) return { ...f, data: { ...d, ns: null } };
+  if (d.type === 'symbol') {
+    if (d.ns !== null) {
+      const prefix = rw.aliases.get(d.ns) ?? (rw.builtin ? BUILTIN[d.ns] : undefined);
+      if (prefix !== undefined) return { ...f, data: { ...d, ns: null, name: prefix + d.name } };
+    } else if (rw.renames.has(d.name)) {
+      return { ...f, data: { ...d, name: rw.renames.get(d.name)! } };
+    }
+    return f;
+  }
   let out = f;
-  if ('items' in d) out = { ...f, data: { ...d, items: (d.items as Form[]).map((x) => rewrite(x, map)) } as Form['data'] };
-  else if (d.type === 'tagged') out = { ...f, data: { ...d, form: rewrite(d.form, map) } };
-  return out.meta ? { ...out, meta: rewrite(out.meta, map) } : out;
+  if ('items' in d) out = { ...f, data: { ...d, items: (d.items as Form[]).map((x) => rewrite(x, rw)) } as Form['data'] };
+  else if (d.type === 'tagged') out = { ...f, data: { ...d, form: rewrite(d.form, rw) } };
+  return out.meta ? { ...out, meta: rewrite(out.meta, rw) } : out;
 }
 
-function topLevelNames(forms: Form[]): string[] {
+export function topLevelNames(forms: Form[]): string[] {
   const names: string[] = [];
   for (const f of forms) {
     const it = f.data.type === 'list' ? (f.data.items as Form[]) : null;
@@ -94,17 +109,24 @@ export function linkModules(forms: Form[], load: NsLoader, features: string[], l
   const visit = (fs: Form[], label: string, isRoot: boolean): void => {
     const nsIdx = fs.findIndex(isNsForm);
     const body: Form[] = [];
-    const aliases = new Map<string, true>();
+    const rw: Rewrites = { aliases: new Map(), renames: new Map(), builtin: !lenient };
     if (nsIdx >= 0) {
       const specs = requireSpecs(fs[nsIdx]!);
       for (const s of specs) {
+        const builtin = !lenient ? BUILTIN[s.ns] : undefined;
+        if (builtin !== undefined) {
+          rw.aliases.set(s.ns, builtin);
+          if (s.alias) rw.aliases.set(s.alias, builtin);
+          for (const r of s.refer) rw.renames.set(r, builtin + r);
+          continue;
+        }
         const dep = seen.has(s.ns) ? null : load(s.ns);
         if (!dep && lenient && !seen.has(s.ns)) {
           kept.set(`${s.ns}/${s.alias}`, s.form);
           continue;
         }
-        aliases.set(s.ns, true);
-        if (s.alias) aliases.set(s.alias, true);
+        rw.aliases.set(s.ns, '');
+        if (s.alias) rw.aliases.set(s.alias, '');
         if (seen.has(s.ns)) continue;
         seen.add(s.ns);
         if (!dep) throw new LinkError(`namespace ${s.ns} (required by ${label}) not found in the project sources`);
@@ -118,7 +140,7 @@ export function linkModules(forms: Form[], load: NsLoader, features: string[], l
     }
     fs.forEach((f, i) => {
       if (i === nsIdx) return;
-      body.push(aliases.size ? rewrite(f, aliases) : f);
+      body.push(rewrite(f, rw));
     });
     for (const n of topLevelNames(body)) {
       const prev = owner.get(n);

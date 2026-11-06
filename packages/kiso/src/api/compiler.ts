@@ -3,8 +3,10 @@
 // Single-entry-point for compiling ClojureScript to JavaScript.
 
 import { setMacroTarget, setTestMacros } from '../analyzer/macros.js';
+import { expandUserMacros } from '../analyzer/macro-expander.js';
 import '../analyzer/test-macros.js';
-import { linkModules, type NsLoader } from '../codegen-as/modules.js';
+import { linkModules, topLevelNames, type NsLoader } from '../codegen-as/modules.js';
+import { injectPrelude } from '../codegen-as/prelude.js';
 import { readStr, readAllStr } from '../reader/reader.js';
 import { Analyzer } from '../analyzer/analyzer.js';
 import { emit, emitModuleWithMappings, type CodegenHook } from '../codegen/emitter.js';
@@ -101,8 +103,14 @@ export function compile(source: string, options?: CompileOptions): CompileResult
     const isCljc = filename?.endsWith('.cljc') ?? false;
     const features = options?.features ?? (options?.target === 'as' ? ['as', 'cljs'] : isCljc ? ['cljs'] : null);
     forms = readAllStr(source, features);
-    if (options?.loadNs) forms = linkModules(forms, options.loadNs, features ?? [], options.target !== 'as');
+    if (options?.loadNs || options?.target === 'as') forms = linkModules(forms, options.loadNs ?? (() => null), features ?? [], options.target !== 'as');
+    setMacroTarget(options?.target === 'as' ? 'as' : 'js');
+    setTestMacros(options?.testMacros === true);
+    forms = expandUserMacros(forms);
+    if (options?.target === 'as') forms = injectPrelude(forms, new Set(topLevelNames(forms)));
   } catch (err) {
+    setMacroTarget('js');
+    setTestMacros(false);
     throw wrapError(err, 'read', filename);
   }
 

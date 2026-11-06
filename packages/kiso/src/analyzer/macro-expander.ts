@@ -4,7 +4,7 @@
 // User macros are evaluated by the mini evaluator.
 
 import type { Form } from '../reader/form.js';
-import { expandOnce as coreExpandOnce } from './macros.js';
+import { expandOnce as coreExpandOnce, expandAll as coreExpandAll } from './macros.js';
 import { MacroEvaluator, makeEnv, type Env } from './evaluator.js';
 
 export class MacroExpander {
@@ -51,7 +51,7 @@ export class MacroExpander {
       ...items.slice(paramIdx),
     ];
     const fnForm: Form = { data: { type: 'list', items: fnItems }, line: 0, col: 0 };
-    const fnVal = this.evaluator.evaluate(fnForm, this.globalEnv);
+    const fnVal = this.evaluator.evaluate(coreExpandAll(fnForm), this.globalEnv);
     this.userMacros.set(name, fnVal);
   }
 
@@ -85,7 +85,9 @@ export class MacroExpander {
       current = expanded;
     }
 
-    // Expand children
+    // Expand children (quoted data is left alone)
+    const qh = current.data.type === 'list' ? current.data.items[0]?.data : undefined;
+    if (qh?.type === 'symbol' && qh.ns === null && qh.name === 'quote') return current;
     if (current.data.type === 'list') {
       const newItems = current.data.items.map((f) => this.expandAll(f));
       return { ...current, data: { type: 'list', items: newItems } };
@@ -105,4 +107,26 @@ export class MacroExpander {
 
     return current;
   }
+}
+
+/**
+ * Register top-level `defmacro`s and expand their uses. Forms are returned untouched when the
+ * source defines no macro, so the default pipeline is unchanged.
+ */
+export function expandUserMacros(forms: Form[]): Form[] {
+  const isDefmacro = (f: Form) => {
+    const h = f.data.type === 'list' ? f.data.items[0]?.data : undefined;
+    return h?.type === 'symbol' && h.ns === null && h.name === 'defmacro';
+  };
+  if (!forms.some(isDefmacro)) return forms;
+  const expander = new MacroExpander();
+  const out: Form[] = [];
+  for (const f of forms) {
+    if (isDefmacro(f)) {
+      expander.processToplevel(f);
+      continue;
+    }
+    out.push(expander.expandAll(f));
+  }
+  return out;
 }

@@ -33,6 +33,16 @@ export class Kw extends Value {
   }
 }
 
+export class Sym extends Value {
+  h: i32 = 0;
+  constructor(
+    public ns: string,
+    public name: string,
+  ) {
+    super();
+  }
+}
+
 export const NIL: Value = new Nil();
 export const TRUE: Value = new Bool(true);
 export const FALSE: Value = new Bool(false);
@@ -239,6 +249,11 @@ export function hashOf(v: Value): i32 {
     if (s.h == 0) s.h = hashStr(s.v) | 1;
     return s.h;
   }
+  if (v instanceof Sym) {
+    const k = changetype<Sym>(v);
+    if (k.h == 0) k.h = (hashStr(k.ns) * 37 + hashStr(k.name)) | 1;
+    return k.h;
+  }
   if (v instanceof Kw) {
     const k = changetype<Kw>(v);
     if (k.h == 0) k.h = (hashStr(k.ns) * 31 + hashStr(k.name)) | 1;
@@ -283,6 +298,10 @@ export function eq(a: Value, b: Value): bool {
   }
   if (a instanceof Num) return b instanceof Num && changetype<Num>(a).v == changetype<Num>(b).v;
   if (a instanceof Str) return b instanceof Str && changetype<Str>(a).v == changetype<Str>(b).v;
+  if (a instanceof Sym) {
+    if (!(b instanceof Sym)) return false;
+    return changetype<Sym>(a).ns == changetype<Sym>(b).ns && changetype<Sym>(a).name == changetype<Sym>(b).name;
+  }
   if (a instanceof Kw) {
     if (!(b instanceof Kw)) return false;
     const x = changetype<Kw>(a);
@@ -1102,6 +1121,10 @@ export function toStr(v: Value, readable: bool): string {
     const s = changetype<Str>(v).v;
     return readable ? quote(s) : s;
   }
+  if (v instanceof Sym) {
+    const k = changetype<Sym>(v);
+    return k.ns.length > 0 ? k.ns + "/" + k.name : k.name;
+  }
   if (v instanceof Kw) {
     const k = changetype<Kw>(v);
     return k.ns.length > 0 ? ":" + k.ns + "/" + k.name : ":" + k.name;
@@ -1552,6 +1575,12 @@ export function kcompareI(a: Value, b: Value): i32 {
     const y = changetype<Str>(b).v;
     return x < y ? -1 : x > y ? 1 : 0;
   }
+  if (a instanceof Sym && b instanceof Sym) {
+    const x = changetype<Sym>(a);
+    const y = changetype<Sym>(b);
+    if (x.ns != y.ns) return x.ns < y.ns ? -1 : 1;
+    return x.name < y.name ? -1 : x.name > y.name ? 1 : 0;
+  }
   if (a instanceof Kw && b instanceof Kw) {
     const x = changetype<Kw>(a);
     const y = changetype<Kw>(b);
@@ -1633,4 +1662,195 @@ export function ksortBy2(kf: Value, c: Value): Value {
 }
 export function ksortBy3(kf: Value, cmp: Value, c: Value): Value {
   return sortImpl(kf, cmp, c);
+}
+
+// -- Atoms -------------------------------------------------------------------
+
+export class Atom extends Value {
+  constructor(public v: Value) {
+    super();
+  }
+}
+export function katom(v: Value): Value {
+  return new Atom(v);
+}
+export function kderef(a: Value): Value {
+  if (a instanceof Atom) return changetype<Atom>(a).v;
+  abort("deref: not an atom");
+  return NIL;
+}
+export function kreset(a: Value, v: Value): Value {
+  if (a instanceof Atom) {
+    changetype<Atom>(a).v = v;
+    return v;
+  }
+  abort("reset!: not an atom");
+  return NIL;
+}
+export function kswap(a: Value, f: Value, args: Array<Value>): Value {
+  if (!(a instanceof Atom)) {
+    abort("swap!: not an atom");
+    return NIL;
+  }
+  const at = changetype<Atom>(a);
+  const all = new Array<Value>();
+  all.push(at.v);
+  for (let i = 0; i < args.length; i++) all.push(args[i]);
+  at.v = callVN(f, all);
+  return at.v;
+}
+
+// -- More numerics, predicates, names ----------------------------------------
+
+export function kint(x: Value): Value {
+  return mkNum(Math.trunc(toF64(x)));
+}
+export function kquot(a: Value, b: Value): Value {
+  return mkNum(Math.trunc(toF64(a) / toF64(b)));
+}
+export function kbitShl(a: Value, n: Value): Value {
+  return mkNum(<f64>(<i64>toF64(a) << <i64>toF64(n)));
+}
+export function kbitShr(a: Value, n: Value): Value {
+  return mkNum(<f64>(<i64>toF64(a) >> <i64>toF64(n)));
+}
+export function kbitAnd(a: Value, b: Value): Value {
+  return mkNum(<f64>(<i64>toF64(a) & <i64>toF64(b)));
+}
+export function kbitOr(a: Value, b: Value): Value {
+  return mkNum(<f64>(<i64>toF64(a) | <i64>toF64(b)));
+}
+export function kbitXor(a: Value, b: Value): Value {
+  return mkNum(<f64>(<i64>toF64(a) ^ <i64>toF64(b)));
+}
+export function kabs(a: Value): Value {
+  return mkNum(Math.abs(toF64(a)));
+}
+export function kboolean(v: Value): bool {
+  return truthy(v);
+}
+export function isInteger(v: Value): bool {
+  if (!(v instanceof Num)) return false;
+  const x = changetype<Num>(v).v;
+  return Math.floor(x) == x && Math.abs(x) < 9007199254740992.0;
+}
+export function isFn(v: Value): bool {
+  return v instanceof Fn;
+}
+export function isSequential(v: Value): bool {
+  return v instanceof Vec || v instanceof LazySeq;
+}
+export function isTrue(v: Value): bool {
+  return v === TRUE;
+}
+export function isFalse(v: Value): bool {
+  return v === FALSE;
+}
+export function kname(v: Value): Value {
+  if (v instanceof Kw) return new Str(changetype<Kw>(v).name);
+  if (v instanceof Sym) return new Str(changetype<Sym>(v).name);
+  if (v instanceof Str) return v;
+  abort("name: not a keyword or string");
+  return NIL;
+}
+export function ksubs2(s: Value, a: Value): Value {
+  return new Str(strOf(s).substring(<i32>toF64(a)));
+}
+export function ksubs3(s: Value, a: Value, b: Value): Value {
+  return new Str(strOf(s).substring(<i32>toF64(a), <i32>toF64(b)));
+}
+function strOf(v: Value): string {
+  if (v instanceof Str) return changetype<Str>(v).v;
+  abort("expected a string");
+  return "";
+}
+
+// -- clojure.string ----------------------------------------------------------
+
+export function cljstrUpperCase(s: Value): Value {
+  return new Str(strOf(s).toUpperCase());
+}
+export function cljstrLowerCase(s: Value): Value {
+  return new Str(strOf(s).toLowerCase());
+}
+export function cljstrTrim(s: Value): Value {
+  return new Str(strOf(s).trim());
+}
+export function cljstrBlank(s: Value): bool {
+  return s === NIL || strOf(s).trim().length == 0;
+}
+export function cljstrStartsWith(s: Value, p: Value): bool {
+  return strOf(s).startsWith(strOf(p));
+}
+export function cljstrEndsWith(s: Value, p: Value): bool {
+  return strOf(s).endsWith(strOf(p));
+}
+export function cljstrIncludes(s: Value, p: Value): bool {
+  return strOf(s).includes(strOf(p));
+}
+export function cljstrReverse(s: Value): Value {
+  const t = strOf(s);
+  let out = "";
+  for (let i = t.length - 1; i >= 0; i--) out += t.charAt(i);
+  return new Str(out);
+}
+export function cljstrReplace(s: Value, a: Value, b: Value): Value {
+  return new Str(strOf(s).replaceAll(strOf(a), strOf(b)));
+}
+export function cljstrJoin1(c: Value): Value {
+  return cljstrJoin2(new Str(""), c);
+}
+export function cljstrJoin2(sep: Value, c: Value): Value {
+  const a = items(c);
+  const sp = strOf(sep);
+  let out = "";
+  for (let i = 0; i < a.length; i++) {
+    if (i > 0) out += sp;
+    out += toStr(a[i], false);
+  }
+  return new Str(out);
+}
+export function cljstrSplit(s: Value, sep: Value): Value {
+  const parts = strOf(s).split(strOf(sep));
+  const out = new Array<Value>();
+  for (let i = 0; i < parts.length; i++) out.push(new Str(parts[i]));
+  return mkVec(out);
+}
+
+export function ksqrt(a: Value): Value {
+  return mkNum(Math.sqrt(toF64(a)));
+}
+export function kpow(a: Value, b: Value): Value {
+  return mkNum(Math.pow(toF64(a), toF64(b)));
+}
+export function kfloor(a: Value): Value {
+  return mkNum(Math.floor(toF64(a)));
+}
+export function kceil(a: Value): Value {
+  return mkNum(Math.ceil(toF64(a)));
+}
+
+export function ksymbol1(v: Value): Value {
+  if (v instanceof Sym) return v;
+  const t = strOf(v);
+  const i = t.indexOf("/");
+  return i > 0 && i < t.length - 1 ? new Sym(t.substring(0, i), t.substring(i + 1)) : new Sym("", t);
+}
+export function ksymbol2(ns: Value, name: Value): Value {
+  return new Sym(ns === NIL ? "" : strOf(ns), strOf(name));
+}
+export function isSymbol(v: Value): bool {
+  return v instanceof Sym;
+}
+export function lt3(a: Value, b: Value, c: Value): bool {
+  return toF64(a) < toF64(b) && toF64(b) < toF64(c);
+}
+export function gt3(a: Value, b: Value, c: Value): bool {
+  return toF64(a) > toF64(b) && toF64(b) > toF64(c);
+}
+export function lte3(a: Value, b: Value, c: Value): bool {
+  return toF64(a) <= toF64(b) && toF64(b) <= toF64(c);
+}
+export function gte3(a: Value, b: Value, c: Value): bool {
+  return toF64(a) >= toF64(b) && toF64(b) >= toF64(c);
 }

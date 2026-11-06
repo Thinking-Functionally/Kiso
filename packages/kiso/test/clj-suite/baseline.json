@@ -9,7 +9,7 @@
     },
     "as": {
       "status": "unsupported",
-      "reason": "AssemblyScript backend: (clojure.string/upper-case …) with 1 args is not supported (unknown core function or arity)"
+      "reason": "AssemblyScript backend: (clojure.edn/read-string …) with 1 args is not supported (unknown core function or arity)"
     }
   },
   "regression": {
@@ -21,8 +21,11 @@
       "skip": 0
     },
     "as": {
-      "status": "unsupported",
-      "reason": "AssemblyScript backend: var min-key is not supported (not defined in this module and not a supported core function)"
+      "status": "ran",
+      "pass": 10,
+      "fail": 0,
+      "error": 0,
+      "skip": 0
     }
   },
   "p99_lists": {
@@ -34,8 +37,11 @@
       "skip": 0
     },
     "as": {
-      "status": "unsupported",
-      "reason": "AssemblyScript backend: (nnext …) with 1 args is not supported (unknown core function or arity)"
+      "status": "ran",
+      "pass": 102,
+      "fail": 0,
+      "error": 0,
+      "skip": 0
     }
   },
   "p99_arithmetic": {
@@ -44,8 +50,11 @@
       "reason": "Cannot use import statement outside a module"
     },
     "as": {
-      "status": "unsupported",
-      "reason": "AssemblyScript backend: (long …) with 1 args is not supported (unknown core function or arity)"
+      "status": "ran",
+      "pass": 43,
+      "fail": 0,
+      "error": 0,
+      "skip": 0
     }
   },
   "fourclojure": {
@@ -55,7 +64,7 @@
     },
     "as": {
       "status": "unsupported",
-      "reason": "namespace clojure.set (required by fourclojure.core-test) not found in the project sources"
+      "reason": "AssemblyScript backend: interop-call is not supported (JS interop; use host/ functions instead)"
     }
   },
   "p99_logic": {
@@ -64,8 +73,11 @@
       "reason": "Identifier '_' has already been declared"
     },
     "as": {
-      "status": "unsupported",
-      "reason": "namespace clojure.string (required by p99.logic-test) not found in the project sources"
+      "status": "ran",
+      "pass": 65,
+      "fail": 0,
+      "error": 0,
+      "skip": 0
     }
   },
   "p99_trees": {
@@ -75,7 +87,7 @@
     },
     "as": {
       "status": "unsupported",
-      "reason": "namespace clojure.string (required by p99.trees) not found in the project sources"
+      "reason": "AssemblyScript backend: (sorted-map …) with 0 args is not supported (unknown core function or arity)"
     }
   },
   "p99_multitrees": {
@@ -85,7 +97,7 @@
     },
     "as": {
       "status": "unsupported",
-      "reason": "namespace clojure.string (required by p99.multitrees) not found in the project sources"
+      "reason": "AssemblyScript backend: regex literal is not supported (only nil, boolean, number and string literals are supported in M2)"
     }
   },
   "p99_graphs": {
@@ -95,7 +107,7 @@
     },
     "as": {
       "status": "unsupported",
-      "reason": "AssemblyScript backend: (distinct …) with 1 args is not supported (unknown core function or arity)"
+      "reason": "AssemblyScript backend: var distinct? is not supported (not defined in this module and not a supported core function)"
     }
   },
   "p99_puzzles": {
@@ -105,7 +117,7 @@
     },
     "as": {
       "status": "unsupported",
-      "reason": "namespace clojure.string (required by p99.puzzles) not found in the project sources"
+      "reason": "AssemblyScript backend: new is not supported (only deftype/defrecord types of this module can be constructed)"
     }
   },
   "depth": {

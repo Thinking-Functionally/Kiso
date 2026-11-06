@@ -486,3 +486,5 @@ and compile during build (requires self-hosted compilation / namespace loading i
 - Metadata not auto-propagated through map/filter/reduce
 - cljs.spec — may add later as optional
 - core.async — may add later as optional
+
+- D28: AS parity batches — atoms, numerics, clojure.string/set builtin ns (prefix rewrite), Kiso-source prelude (hybrid with native runtime), user `defmacro` on both backends, `Sym`, 3-arg comparisons, `()` is a real empty list on AS. tests/clj AS: lists/arithmetic/logic/regression fully pass; try/catch, regex, edn, interop remain unsupported.

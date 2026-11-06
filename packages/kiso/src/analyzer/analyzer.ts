@@ -3,7 +3,7 @@
 // Handles special form dispatch, scope tracking, and interop rewriting.
 
 import { type Form } from '../reader/form.js';
-import { expandAll } from './macros.js';
+import { expandAll, currentMacroTarget } from './macros.js';
 import { expandBinding } from './destructure.js';
 import type {
   Node, LetBinding, FnArity, LiteralNode, DefNode, CaseClause,
@@ -111,7 +111,13 @@ export class Analyzer {
   private analyzeList(form: Form, scope: Scope): Node {
     if (form.data.type !== 'list') throw new Error('Expected list');
     const items = form.data.items;
-    if (items.length === 0) return lit(null, 'null'); // empty list → null (simplified)
+    if (items.length === 0) {
+      if (currentMacroTarget() === 'as') {
+        const head: Form = { ...form, data: { type: 'symbol', ns: null, name: 'list' } } as Form;
+        return this.analyzeList({ ...form, data: { type: 'list', items: [head] } } as Form, scope);
+      }
+      return lit(null, 'null'); // empty list → null (simplified)
+    }
 
     const head = items[0]!;
 

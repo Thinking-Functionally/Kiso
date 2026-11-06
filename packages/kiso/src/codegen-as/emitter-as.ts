@@ -97,6 +97,46 @@ const CORE_OPS: Record<string, CoreOp> = {
   sort: { kind: 'value', fn: 'ksort', arity: [1, 2], sfx: true },
   'sort-by': { kind: 'value', fn: 'ksortBy', arity: [2, 3], sfx: true },
   compare: { kind: 'value', fn: 'kcompare', arity: 2 },
+  'atom': { kind: 'value', fn: 'katom', arity: 1 },
+  'deref': { kind: 'value', fn: 'kderef', arity: 1 },
+  'reset!': { kind: 'value', fn: 'kreset', arity: 2 },
+  'int': { kind: 'value', fn: 'kint', arity: 1 },
+  'long': { kind: 'value', fn: 'kint', arity: 1 },
+  'quot': { kind: 'value', fn: 'kquot', arity: 2 },
+  'bit-shift-left': { kind: 'value', fn: 'kbitShl', arity: 2 },
+  'bit-shift-right': { kind: 'value', fn: 'kbitShr', arity: 2 },
+  'bit-and': { kind: 'value', fn: 'kbitAnd', arity: 2 },
+  'bit-or': { kind: 'value', fn: 'kbitOr', arity: 2 },
+  'bit-xor': { kind: 'value', fn: 'kbitXor', arity: 2 },
+  'abs': { kind: 'value', fn: 'kabs', arity: 1 },
+  'boolean': { kind: 'bool', fn: 'kboolean', arity: 1 },
+  'integer?': { kind: 'bool', fn: 'isInteger', arity: 1 },
+  'fn?': { kind: 'bool', fn: 'isFn', arity: 1 },
+  'sequential?': { kind: 'bool', fn: 'isSequential', arity: 1 },
+  'true?': { kind: 'bool', fn: 'isTrue', arity: 1 },
+  'false?': { kind: 'bool', fn: 'isFalse', arity: 1 },
+  'name': { kind: 'value', fn: 'kname', arity: 1 },
+  'cljstr-upper-case': { kind: 'value', fn: 'cljstrUpperCase', arity: 1 },
+  'cljstr-lower-case': { kind: 'value', fn: 'cljstrLowerCase', arity: 1 },
+  'cljstr-trim': { kind: 'value', fn: 'cljstrTrim', arity: 1 },
+  'cljstr-blank?': { kind: 'bool', fn: 'cljstrBlank', arity: 1 },
+  'cljstr-starts-with?': { kind: 'bool', fn: 'cljstrStartsWith', arity: 2 },
+  'cljstr-ends-with?': { kind: 'bool', fn: 'cljstrEndsWith', arity: 2 },
+  'cljstr-includes?': { kind: 'bool', fn: 'cljstrIncludes', arity: 2 },
+  'cljstr-reverse': { kind: 'value', fn: 'cljstrReverse', arity: 1 },
+  'cljstr-replace': { kind: 'value', fn: 'cljstrReplace', arity: 3 },
+  'cljstr-split': { kind: 'value', fn: 'cljstrSplit', arity: 2 },
+  subs: { kind: 'value', fn: 'ksubs', arity: [2, 3], sfx: true },
+  'cljstr-join': { kind: 'value', fn: 'cljstrJoin', arity: [1, 2], sfx: true },
+  'Math/abs': { kind: 'value', fn: 'kabs', arity: 1 },
+  'Math/sqrt': { kind: 'value', fn: 'ksqrt', arity: 1 },
+  'Math/pow': { kind: 'value', fn: 'kpow', arity: 2 },
+  'Math/floor': { kind: 'value', fn: 'kfloor', arity: 1 },
+  'Math/ceil': { kind: 'value', fn: 'kceil', arity: 1 },
+  symbol: { kind: 'value', fn: 'ksymbol', arity: [1, 2], sfx: true },
+  'symbol?': { kind: 'bool', fn: 'isSymbol', arity: 1 },
+  key: { kind: 'value', fn: 'kfirst', arity: 1 },
+  val: { kind: 'value', fn: 'ksecond', arity: 1 },
   'ex-info': { kind: 'value', fn: 'kexInfo', arity: 2 },
   'ex-message': { kind: 'value', fn: 'kexMessage', arity: 1 },
   'ex-data': { kind: 'value', fn: 'kexData', arity: 1 },
@@ -127,7 +167,7 @@ const RUNTIME_IMPORTS = [
   'println', 'prn', 'prStr', 'str',
   'SetV', 'ExInfo', 'EMPTY_SET', 'mkSet', 'hashSet', 'kset', 'kdisj', 'isSet', 'isList', 'isSeq', 'items', 'klist', 'kseq', 'krest', 'knext',
   'kcons', 'kemptyOf', 'kreverse', 'kconcat', 'ktake', 'kdrop', 'kmap2', 'kmap3', 'kmapv', 'kfilter', 'kfilterv', 'kremove', 'ksome',
-  'Rec', 'Reified', 'noImpl', 'kevery', 'kinto', 'krange1', 'krange2', 'krange3', 'kapply', 'lazySeq', 'kdoall', 'kdorun', 'kiterate', 'krepeat1', 'krepeat2', 'kcycle', 'ktakeWhile', 'kdropWhile', 'kmapcat', 'krange0', 'ksort1', 'ksort2', 'ksortBy2', 'ksortBy3', 'kcompare', 'kexInfo', 'kexMessage', 'kexData', 'restOf',
+  'Rec', 'Reified', 'noImpl', 'kevery', 'kinto', 'krange1', 'krange2', 'krange3', 'kapply', 'lazySeq', 'kdoall', 'kdorun', 'kiterate', 'krepeat1', 'krepeat2', 'kcycle', 'ktakeWhile', 'kdropWhile', 'kmapcat', 'krange0', 'ksort1', 'ksort2', 'ksortBy2', 'ksortBy3', 'kcompare', 'kexInfo', 'kexMessage', 'Sym', 'ksymbol1', 'ksymbol2', 'isSymbol', 'lt3', 'gt3', 'lte3', 'gte3', 'ksqrt', 'kpow', 'kfloor', 'kceil', 'katom', 'kderef', 'kreset', 'kint', 'kint', 'kquot', 'kbitShl', 'kbitShr', 'kbitAnd', 'kbitOr', 'kbitXor', 'kabs', 'kboolean', 'isInteger', 'isFn', 'isSequential', 'isTrue', 'isFalse', 'kname', 'cljstrUpperCase', 'cljstrLowerCase', 'cljstrTrim', 'cljstrBlank', 'cljstrStartsWith', 'cljstrEndsWith', 'cljstrIncludes', 'cljstrReverse', 'cljstrReplace', 'cljstrSplit', 'Atom', 'kswap', 'ksubs2', 'ksubs3', 'cljstrJoin1', 'cljstrJoin2',  'kexData', 'restOf',
 ];
 
 function unsupported(construct: string, reason: string): never {
@@ -561,6 +601,15 @@ class Emitter {
         return this.tableCall(name, a);
       case 'apply':
         if (a.length >= 2) return `kapply(${a[0]}, [${a.slice(1, -1).join(', ')}], ${a[a.length - 1]})`;
+        break;
+      case '<':
+      case '>':
+      case '<=':
+      case '>=':
+        if (a.length === 3) return `bool_(${{ '<': 'lt3', '>': 'gt3', '<=': 'lte3', '>=': 'gte3' }[name]}(${a.join(', ')}))`;
+        return this.tableCall(name, a);
+      case 'swap!':
+        if (a.length >= 2) return `kswap(${a[0]}, ${a[1]}, [${a.slice(2).join(', ')}])`;
         break;
       case 'update':
         if (a.length >= 3) return `kupdate(${a[0]}, ${a[1]}, ${a[2]}, [${a.slice(3).join(', ')}])`;
