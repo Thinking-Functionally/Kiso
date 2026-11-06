@@ -128,6 +128,7 @@ const CORE_OPS: Record<string, CoreOp> = {
   'true?': { kind: 'bool', fn: 'isTrue', arity: 1 },
   'false?': { kind: 'bool', fn: 'isFalse', arity: 1 },
   'name': { kind: 'value', fn: 'kname', arity: 1 },
+  'namespace': { kind: 'value', fn: 'knamespace', arity: 1 },
   'cljstr-upper-case': { kind: 'value', fn: 'cljstrUpperCase', arity: 1 },
   'cljstr-lower-case': { kind: 'value', fn: 'cljstrLowerCase', arity: 1 },
   'cljstr-trim': { kind: 'value', fn: 'cljstrTrim', arity: 1 },
@@ -183,7 +184,7 @@ const RUNTIME_IMPORTS = [
   'println', 'prn', 'prStr', 'str',
   'SetV', 'ExInfo', 'EMPTY_SET', 'mkSet', 'hashSet', 'kset', 'kdisj', 'isSet', 'isList', 'isSeq', 'items', 'klist', 'kseq', 'krest', 'knext',
   'kcons', 'kemptyOf', 'kreverse', 'kconcat', 'ktake', 'kdrop', 'kmap2', 'kmap3', 'kmapv', 'kfilter', 'kfilterv', 'kremove', 'ksome',
-  'Rec', 'Reified', 'noImpl', 'kevery', 'kinto', 'krange1', 'krange2', 'krange3', 'kapply', 'lazySeq', 'kdoall', 'kdorun', 'kiterate', 'krepeat1', 'krepeat2', 'kcycle', 'ktakeWhile', 'kdropWhile', 'kmapcat', 'krange0', 'ksort1', 'ksort2', 'ksortBy2', 'ksortBy3', 'kcompare', 'kexInfo', 'kexMessage', 'Sym', 'ksymbol1', 'ksymbol2', 'isSymbol', 'kcmpN', 'ksqrt', 'kpow', 'kfloor', 'kceil', 'katom', 'kderef', 'kreset', 'kint', 'kint', 'kquot', 'kbitShl', 'kbitShr', 'kbitAnd', 'kbitOr', 'kbitXor', 'kabs', 'kboolean', 'isInteger', 'isFn', 'isSequential', 'isTrue', 'isFalse', 'kname', 'cljstrUpperCase', 'cljstrLowerCase', 'cljstrTrim', 'cljstrBlank', 'cljstrStartsWith', 'cljstrEndsWith', 'cljstrIncludes', 'cljstrReverse', 'cljstrReplace', 'cljstrSplit', 'Atom', 'kswap', 'ksubs2', 'ksubs3', 'cljstrJoin1', 'cljstrJoin2',  'kexData', 'restOf',
+  'Rec', 'Reified', 'noImpl', 'kevery', 'kinto', 'krange1', 'krange2', 'krange3', 'kapply', 'lazySeq', 'kdoall', 'kdorun', 'kiterate', 'krepeat1', 'krepeat2', 'kcycle', 'ktakeWhile', 'kdropWhile', 'kmapcat', 'krange0', 'ksort1', 'ksort2', 'ksortBy2', 'ksortBy3', 'kcompare', 'kexInfo', 'kexMessage', 'Sym', 'ksymbol1', 'ksymbol2', 'isSymbol', 'kcmpN', 'ksqrt', 'kpow', 'kfloor', 'kceil', 'katom', 'kderef', 'kreset', 'kint', 'kint', 'kquot', 'kbitShl', 'kbitShr', 'kbitAnd', 'kbitOr', 'kbitXor', 'kabs', 'kboolean', 'isInteger', 'isFn', 'isSequential', 'isTrue', 'isFalse', 'kname', 'knamespace', 'cljstrUpperCase', 'cljstrLowerCase', 'cljstrTrim', 'cljstrBlank', 'cljstrStartsWith', 'cljstrEndsWith', 'cljstrIncludes', 'cljstrReverse', 'cljstrReplace', 'cljstrSplit', 'Atom', 'kswap', 'ksubs2', 'ksubs3', 'cljstrJoin1', 'cljstrJoin2',  'kexData', 'restOf',
 ];
 
 function unsupported(construct: string, reason: string): never {

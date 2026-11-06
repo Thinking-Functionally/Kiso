@@ -220,7 +220,8 @@ export function assoc(coll: unknown, key: unknown, val: unknown): unknown {
     return (coll as PersistentHashMap).assoc(key, val);
   }
   if (isVector(coll) && typeof key === 'number') {
-    return (coll as PersistentVector).assocN(key, val);
+    const v = coll as PersistentVector;
+    return key === v.count ? v.conj(val) : v.assocN(key, val);
   }
   if (isSortedMap(coll)) {
     return (coll as PersistentTreeMap).assoc(key, val);

@@ -2061,6 +2061,13 @@ export function kname(v: Value): Value {
   abort("name: not a keyword or string");
   return NIL;
 }
+export function knamespace(v: Value): Value {
+  let ns = "";
+  if (v instanceof Kw) ns = changetype<Kw>(v).ns;
+  else if (v instanceof Sym) ns = changetype<Sym>(v).ns;
+  else abort("namespace: not a keyword or symbol");
+  return ns.length == 0 ? NIL : new Str(ns);
+}
 export function ksubs2(s: Value, a: Value): Value {
   return new Str(strOf(s).substring(<i32>toF64(a)));
 }

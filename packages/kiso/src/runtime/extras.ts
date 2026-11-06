@@ -3,7 +3,10 @@
 import { seq, toArray } from './seq.js';
 import { vector, isVector } from './vector.js';
 import { isList, list } from './list.js';
-import { hashMap } from './hash-map.js';
+import { hashMap, isHashMap } from './hash-map.js';
+import { hashSet, isHashSet } from './hash-set.js';
+import { isSortedMap } from './sorted-map.js';
+import { isSortedSet } from './sorted-set.js';
 import { isKeyword } from './keyword.js';
 import { isSymbol } from './symbol.js';
 import { equiv } from './equiv.js';
@@ -24,6 +27,11 @@ export function true_p(x: unknown): boolean { return x === true; }
 export function false_p(x: unknown): boolean { return x === false; }
 export function boolean(x: unknown): boolean { return truthy(x); }
 export const hash_map = hashMap;
+export const hash_set = hashSet;
+export function keyword_p(x: unknown): boolean { return isKeyword(x); }
+export function symbol_p(x: unknown): boolean { return isSymbol(x); }
+export function map_p(x: unknown): boolean { return isHashMap(x) || isSortedMap(x); }
+export function set_p(x: unknown): boolean { return isHashSet(x) || isSortedSet(x); }
 
 export function int(x: unknown): number { return typeof x === 'string' ? x.codePointAt(0)! : Math.trunc(x as number); }
 export function char(x: unknown): string { return typeof x === 'string' ? x : String.fromCodePoint(x as number); }
