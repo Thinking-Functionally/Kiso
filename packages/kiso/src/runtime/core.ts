@@ -730,13 +730,36 @@ export function memoize(f: (...args: unknown[]) => unknown): (...args: unknown[]
 
 // -- Printing --
 
+// Output capture for with-out-str: while active, print functions append here instead of writing.
+const outCapture: string[][] = [];
+function emitOut(s: string, newline: boolean): boolean {
+  const top = outCapture[outCapture.length - 1];
+  if (!top) return false;
+  top.push(newline ? s + '\n' : s);
+  return true;
+}
+
+/** Runs f with all print output captured; returns the captured text. */
+export function capture_out(f: () => unknown): string {
+  const buf: string[] = [];
+  outCapture.push(buf);
+  try {
+    f();
+  } finally {
+    outCapture.pop();
+  }
+  return buf.join('');
+}
+
 export function println(...args: unknown[]): void {
-  console.log(args.map((a) => printStr(a, false)).join(' '));
+  const s = args.map((a) => printStr(a, false)).join(' ');
+  if (!emitOut(s, true)) console.log(s);
 }
 
 export function print_fn(...args: unknown[]): void {
   // In browser/Node, use process.stdout if available, else console.log without newline
   const s = args.map((a) => printStr(a, false)).join(' ');
+  if (emitOut(s, false)) return;
   if (typeof process !== 'undefined' && process.stdout) {
     process.stdout.write(s);
   } else {
@@ -1394,10 +1417,12 @@ export function instance_p(ctor: unknown, x: unknown): boolean {
 // -- prn / pr --
 
 export function prn(...args: unknown[]): void {
-  console.log(args.map(prStr).join(' '));
+  const s = args.map(prStr).join(' ');
+  if (!emitOut(s, true)) console.log(s);
 }
 
 export function pr(...args: unknown[]): void {
+  if (emitOut(args.map(prStr).join(' '), false)) return;
   if (typeof process !== 'undefined' && process.stdout) {
     process.stdout.write(args.map(prStr).join(' '));
   } else {

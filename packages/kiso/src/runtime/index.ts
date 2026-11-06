@@ -92,7 +92,7 @@ export {
   contains_p, subs, invoke,
   // Transducer support
   Reduced, reduced, reduced_p, unreduced, ensure_reduced,
-  completing, transduce,
+  completing, transduce, capture_out,
 } from './core.js';
 export { PersistentTreeMap, isSortedMap, EMPTY_SORTED_MAP } from './sorted-map.js';
 export { PersistentTreeSet, isSortedSet, EMPTY_SORTED_SET } from './sorted-set.js';

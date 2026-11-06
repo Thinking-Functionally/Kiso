@@ -219,6 +219,10 @@ defmacro('when', (items, form) => {
   return makeList([sym('if'), test, makeList([sym('do'), ...body]), makeNil()], ...loc(form));
 });
 
+defmacro('with-out-str', (items, form) =>
+  // (with-out-str body...) → (capture-out (fn [] body...)): returns what body printed.
+  makeList([sym('capture-out'), makeList([sym('fn'), makeVector([]), ...items.slice(1)])], ...loc(form)));
+
 defmacro('when-not', (items, form) => {
   // (when-not test body...) → (if (not test) (do body...) nil)
   const test = nth(items, 1);

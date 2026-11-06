@@ -1201,24 +1201,41 @@ function elemStr(v: Value, readable: bool): string {
   return v === NIL ? "nil" : toStr(v, readable);
 }
 
-export function println(args: Array<Value>): Value {
-  let out = "";
+// with-out-str: while a capture is active, printing appends to the innermost buffer.
+const outStack = new Array<string>();
+function out(s: string): void {
+  const n = outStack.length;
+  if (n > 0) outStack[n - 1] = outStack[n - 1] + s;
+  else hostWrite(s);
+}
+function joinPrint(args: Array<Value>, readable: bool): string {
+  let s = "";
   for (let i = 0; i < args.length; i++) {
-    if (i > 0) out += " ";
-    out += args[i] === NIL ? "nil" : toStr(args[i], false);
+    if (i > 0) s += " ";
+    s += readable ? toStr(args[i], true) : args[i] === NIL ? "nil" : toStr(args[i], false);
   }
-  hostWrite(out + "\n");
+  return s;
+}
+export function println(args: Array<Value>): Value {
+  out(joinPrint(args, false) + "\n");
   return NIL;
 }
-
-export function prn(args: Array<Value>): Value {
-  let out = "";
-  for (let i = 0; i < args.length; i++) {
-    if (i > 0) out += " ";
-    out += toStr(args[i], true);
-  }
-  hostWrite(out + "\n");
+export function print(args: Array<Value>): Value {
+  out(joinPrint(args, false));
   return NIL;
+}
+export function prn(args: Array<Value>): Value {
+  out(joinPrint(args, true) + "\n");
+  return NIL;
+}
+export function pr(args: Array<Value>): Value {
+  out(joinPrint(args, true));
+  return NIL;
+}
+export function kcaptureOut(f: Value): Value {
+  outStack.push("");
+  callV0(f);
+  return new Str(outStack.pop());
 }
 
 export function prStr(args: Array<Value>): Value {
@@ -2108,6 +2125,9 @@ export function isInteger(v: Value): bool {
   if (!(v instanceof Num)) return false;
   const x = changetype<Num>(v).v;
   return Math.floor(x) == x && Math.abs(x) < 9007199254740992.0;
+}
+export function isFloat(v: Value): bool {
+  return v instanceof Num && !isInteger(v);
 }
 export function isFn(v: Value): bool {
   return v instanceof Fn;

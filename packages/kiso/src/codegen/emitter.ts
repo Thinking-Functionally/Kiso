@@ -801,7 +801,7 @@ const RUNTIME_FUNCTIONS = new Set([
   // Higher-order
   'complement', 'juxt', 'every-pred', 'some-fn', 'memoize',
   // Printing
-  'println', 'print',
+  'println', 'print', 'capture-out',
   // Collection access
   'nth', 'second', 'last', 'butlast', 'peek', 'pop', 'subvec', 'not-empty',
   // Seq batch 2

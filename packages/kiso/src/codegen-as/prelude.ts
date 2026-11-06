@@ -153,6 +153,12 @@ const PRELUDE = `
           hit)))))
 (defn print-str [& xs] (apply str (interpose " " (map str xs))))
 (defn associative? [x] (or (map? x) (vector? x)))
+(defn ifn? [x] (or (fn? x) (keyword? x) (symbol? x) (map? x) (set? x) (vector? x)))
+(defn counted? [x] (or (vector? x) (map? x) (set? x) (list? x)))
+(defn reversible? [x] (vector? x))
+(defn sorted? [x] false)
+(defn prn-str [& xs] (str (apply pr-str xs) "\n"))
+(defn println-str [& xs] (str (apply print-str xs) "\n"))
 (defn merge-with [f & maps]
   (reduce (fn [acc m]
             (reduce (fn [a k] (if (contains? a k) (assoc a k (f (get a k) (get m k))) (assoc a k (get m k))))
