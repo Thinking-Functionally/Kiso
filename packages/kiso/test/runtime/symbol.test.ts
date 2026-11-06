@@ -10,7 +10,7 @@ describe('symbol creation', () => {
   });
 
   it('creates namespaced symbol', () => {
-    const s = symbol('foo', 'my.ns');
+    const s = symbol('my.ns', 'foo');
     expect(s.name).toBe('foo');
     expect(s.ns).toBe('my.ns');
   });
@@ -30,7 +30,7 @@ describe('symbol toString', () => {
   });
 
   it('namespaced symbol', () => {
-    expect(symbol('bar', 'ns').toString()).toBe('ns/bar');
+    expect(symbol('ns', 'bar').toString()).toBe('ns/bar');
   });
 });
 

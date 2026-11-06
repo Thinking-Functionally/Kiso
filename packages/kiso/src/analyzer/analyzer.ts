@@ -400,10 +400,10 @@ export class Analyzer {
       case 'symbol': return {
         type: 'invoke',
         fn: { type: 'var-ref', name: 'symbol', local: false },
-        // The JS runtime is symbol(name, ns?); the AS runtime is (symbol ns name).
+        // Both runtimes follow Clojure: (symbol name) or (symbol ns name); AS always passes ns (nil when absent).
         args: currentMacroTarget() === 'as'
           ? [form.data.ns ? lit(form.data.ns, 'string') : lit(null, 'null'), lit(form.data.name, 'string')]
-          : form.data.ns ? [lit(form.data.name, 'string'), lit(form.data.ns, 'string')] : [lit(form.data.name, 'string')],
+          : form.data.ns ? [lit(form.data.ns, 'string'), lit(form.data.name, 'string')] : [lit(form.data.name, 'string')],
       };
       case 'keyword': return { type: 'keyword', ns: form.data.ns, name: form.data.name };
       case 'list': return {

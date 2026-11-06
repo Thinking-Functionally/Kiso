@@ -34,9 +34,9 @@ function computeSymbolHash(name: string, ns: string | null): number {
   return h;
 }
 
-/** Create a new symbol (not interned). */
-export function symbol(name: string, ns?: string): Sym {
-  return new Sym(name, ns ?? null);
+/** Create a new symbol (not interned): `(symbol name)` or `(symbol ns name)`. */
+export function symbol(nsOrName: string, name?: string): Sym {
+  return name === undefined ? new Sym(nsOrName, null) : new Sym(name, nsOrName);
 }
 
 export function isSymbol(x: unknown): x is Sym {
