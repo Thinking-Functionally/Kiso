@@ -139,6 +139,25 @@ const PRELUDE = `
 (defn subvec
   ([v start] (subvec v start (count v)))
   ([v start end] (vec (take (- end start) (drop start v)))))
+(defn coll? [x] (or (vector? x) (map? x) (set? x) (seq? x) (list? x)))
+(defn find [m k] (if (contains? m k) [k (get m k)] nil))
+(defn nfirst [xs] (next (first xs)))
+(defn trampoline [f & args]
+  (loop [r (apply f args)] (if (fn? r) (recur (r)) r)))
+(defn memoize [f]
+  (let [cache (atom {})]
+    (fn [& args]
+      (let [hit (get (deref cache) args :kiso/none)]
+        (if (= hit :kiso/none)
+          (let [v (apply f args)] (swap! cache assoc args v) v)
+          hit)))))
+(defn print-str [& xs] (apply str (interpose " " (map str xs))))
+(defn associative? [x] (or (map? x) (vector? x)))
+(defn merge-with [f & maps]
+  (reduce (fn [acc m]
+            (reduce (fn [a k] (if (contains? a k) (assoc a k (f (get a k) (get m k))) (assoc a k (get m k))))
+                    (or acc {}) (keys m)))
+          nil maps))
 (defn cljset-union [& sets] (reduce (fn [acc s] (reduce conj acc s)) #{} sets))
 (defn cljset-intersection [a & more]
   (reduce (fn [acc s] (reduce (fn [r x] (if (contains? s x) (conj r x) r)) #{} acc)) a more))
