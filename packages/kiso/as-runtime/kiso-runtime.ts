@@ -2000,6 +2000,47 @@ export function kgoAlts(ports: Value, cb: Value): Value {
 
 // -- Atoms -------------------------------------------------------------------
 
+// Transients wrap a persistent value and mutate the wrapper (observable behaviour matches Clojure's contract).
+export class Transient extends Value {
+  live: bool = true;
+  constructor(public v: Value) {
+    super();
+  }
+}
+function liveTransient(t: Value): Transient {
+  if (!(t instanceof Transient)) abort("transient operation on a non-transient");
+  const tr = changetype<Transient>(t);
+  if (!tr.live) abort("Transient used after persistent! call");
+  return tr;
+}
+export function ktransient(c: Value): Value {
+  return new Transient(c);
+}
+export function kpersistent(t: Value): Value {
+  const tr = liveTransient(t);
+  tr.live = false;
+  return tr.v;
+}
+export function kconjBang(t: Value, x: Value): Value {
+  const tr = liveTransient(t);
+  tr.v = kconj(tr.v, x);
+  return t;
+}
+export function kassocBang(t: Value, k: Value, x: Value): Value {
+  const tr = liveTransient(t);
+  tr.v = kassoc(tr.v, k, x);
+  return t;
+}
+export function kdissocBang(t: Value, k: Value): Value {
+  const tr = liveTransient(t);
+  tr.v = kdissoc(tr.v, k);
+  return t;
+}
+export function kdisjBang(t: Value, k: Value): Value {
+  const tr = liveTransient(t);
+  tr.v = kdisj(tr.v, k);
+  return t;
+}
 export class Atom extends Value {
   constructor(public v: Value) {
     super();

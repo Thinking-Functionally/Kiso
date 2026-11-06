@@ -45,3 +45,16 @@
   (is (= 20 (reduce + 0 (for [x (range 5) :let [y (* x x)] :when (even? x)] y))))
   (is (= 4 (count (for [x (range) :while (< x 4)] x))))
   (is (= '(2 4) (for [x [1 2]] (* x 2)))))
+
+(deftest lazy-seq-edge-cases
+  (let [realized (atom false)
+        ls (lazy-seq (reset! realized true) [1 2 3])]
+    (is (false? @realized))
+    (is (= 1 (first ls)))
+    (is (true? @realized)))
+  (is (= 20 (first (rest (lazy-seq [10 20 30])))))
+  (is (= 20 (first (next (lazy-seq [10 20 30])))))
+  (is (nil? (first (lazy-seq []))))
+  (is (nil? (first (lazy-seq nil))))
+  (is (nil? (seq (lazy-seq nil))))
+  (is (= [1 2 3] (lazy-seq (lazy-seq [1 2 3])))))
