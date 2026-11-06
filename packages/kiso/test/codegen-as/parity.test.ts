@@ -19,3 +19,6 @@ it('prelude fns and user defmacro', async () => {
 it('clojure.string alias', async () => {
   expect(await run('(ns t (:require [clojure.string :as s])) (defn -main [] (println (s/upper-case "ab")))')).toBe('AB');
 });
+it('variadic comparisons, direct and first-class', async () => {
+  expect(await run('(defn -main [] (println (< 1 2 3 4) (< 1 3 2 4) (>= 5 5 4 4) (<= 1) (apply < [1 2 3 4 5]) (apply >= [3 3 2]) (every? true? (map < [1 2] [2 3]))))')).toBe('true false true true true true true');
+});

@@ -22,7 +22,7 @@ describe('emitter-as: source shape', () => {
 describe('emitter-as: run in wasm', () => {
   it('runs println at start', async () => {
     const r = await runKisoAs('(println "hello" 1 2.5 :k nil true)');
-    expect(r.output).toBe('hello 1 2.5 :k  true\n');
+    expect(r.output).toBe('hello 1 2.5 :k nil true\n');
   }, 60_000);
 
   it('fib via export', async () => {

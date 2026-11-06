@@ -22,11 +22,20 @@ export function hashKey(key: unknown): number {
   if (typeof key === 'object' && key !== null && 'hash' in key) {
     return (key as { hash: number }).hash;
   }
+  if (hooks !== null && (typeof key === 'object' || typeof key === 'function')) {
+    const h = hooks.hash(key);
+    if (h !== undefined) return h;
+  }
   return hashString(String(key));
 }
 
+/** Registered by core.ts to avoid import cycles with the collection modules. */
+type Hooks = { hash(k: unknown): number | undefined; eq(a: unknown, b: unknown): boolean };
+let hooks: Hooks | null = null;
+export function setStructuralHooks(h: Hooks): void { hooks = h; }
+
 function keysEqual(a: unknown, b: unknown): boolean {
-  return a === b;
+  return a === b || (hooks !== null && typeof a === 'object' && a !== null && hooks.eq(a, b));
 }
 
 // -- HAMT Node --

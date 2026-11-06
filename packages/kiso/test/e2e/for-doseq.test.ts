@@ -14,7 +14,7 @@ import { symbol as runtimeSymbol } from '../../src/runtime/symbol.js';
 import { seq, first, next as seqNext } from '../../src/runtime/seq.js';
 import { defprotocol, protocolFn } from '../../src/runtime/protocols.js';
 import {
-  truthy, add, subtract, multiply, nil_p, not, str, get, count,
+  ifn, truthy, add, subtract, multiply, nil_p, not, str, get, count,
   eq, lt, gt, lte, gte, conj, map, filter, reduce,
 } from '../../src/runtime/core.js';
 
@@ -24,7 +24,7 @@ const runtime: Record<string, unknown> = {
   vector, keyword, hashMap, hashSet, list, EMPTY_LIST,
   symbol: runtimeSymbol, seq, first, next: seqNext,
   defprotocol, protocolFn,
-  truthy, add, subtract, multiply, nil_p, not, str, get, count,
+  ifn, truthy, add, subtract, multiply, nil_p, not, str, get, count,
   eq, lt, gt, lte, gte, conj, map, filter, reduce,
 };
 const runtimeKeys = Object.keys(runtime);

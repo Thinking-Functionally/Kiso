@@ -15,7 +15,7 @@ import { seq, first, next as seqNext } from '../../src/runtime/seq.js';
 import { defprotocol, protocolFn } from '../../src/runtime/protocols.js';
 import { defmultiFn } from '../../src/runtime/multifn.js';
 import {
-  truthy, add, subtract, multiply, nil_p, not, str, get, count,
+  ifn, truthy, add, subtract, multiply, nil_p, not, str, get, count,
   eq, lt, gt, lte, gte,
 } from '../../src/runtime/core.js';
 
@@ -25,7 +25,7 @@ const runtime: Record<string, unknown> = {
   vector, keyword, hashMap, hashSet, list, EMPTY_LIST,
   symbol: runtimeSymbol, seq, first, next: seqNext,
   defprotocol, protocolFn, defmultiFn,
-  truthy, add, subtract, multiply, nil_p, not, str, get, count,
+  ifn, truthy, add, subtract, multiply, nil_p, not, str, get, count,
   eq, lt, gt, lte, gte,
 };
 const runtimeKeys = Object.keys(runtime);

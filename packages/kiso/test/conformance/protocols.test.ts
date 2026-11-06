@@ -15,7 +15,7 @@ import { list, EMPTY_LIST } from '../../src/runtime/list.js';
 import { symbol as runtimeSymbol } from '../../src/runtime/symbol.js';
 import { defprotocol, protocolFn } from '../../src/runtime/protocols.js';
 import {
-  truthy, add, subtract, str, nil_p, not, get, count,
+  ifn, truthy, add, subtract, str, nil_p, not, get, count,
 } from '../../src/runtime/core.js';
 
 const analyzer = new Analyzer();
@@ -24,7 +24,7 @@ const runtime: Record<string, unknown> = {
   vector, keyword, hashMap, hashSet, list, EMPTY_LIST,
   symbol: runtimeSymbol,
   defprotocol, protocolFn,
-  truthy, add, subtract, str, nil_p, not, get, count,
+  ifn, truthy, add, subtract, str, nil_p, not, get, count,
 };
 const runtimeKeys = Object.keys(runtime);
 const runtimeVals = Object.values(runtime);

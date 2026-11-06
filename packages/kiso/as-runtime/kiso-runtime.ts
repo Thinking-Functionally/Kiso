@@ -1179,7 +1179,7 @@ export function println(args: Array<Value>): Value {
   let out = "";
   for (let i = 0; i < args.length; i++) {
     if (i > 0) out += " ";
-    out += toStr(args[i], false);
+    out += args[i] === NIL ? "nil" : toStr(args[i], false);
   }
   hostWrite(out + "\n");
   return NIL;
@@ -1842,15 +1842,14 @@ export function ksymbol2(ns: Value, name: Value): Value {
 export function isSymbol(v: Value): bool {
   return v instanceof Sym;
 }
-export function lt3(a: Value, b: Value, c: Value): bool {
-  return toF64(a) < toF64(b) && toF64(b) < toF64(c);
-}
-export function gt3(a: Value, b: Value, c: Value): bool {
-  return toF64(a) > toF64(b) && toF64(b) > toF64(c);
-}
-export function lte3(a: Value, b: Value, c: Value): bool {
-  return toF64(a) <= toF64(b) && toF64(b) <= toF64(c);
-}
-export function gte3(a: Value, b: Value, c: Value): bool {
-  return toF64(a) >= toF64(b) && toF64(b) >= toF64(c);
+// op: 0 <, 1 >, 2 <=, 3 >=; chained pairwise like Clojure, 1 arg is true
+export function kcmpN(op: i32, args: Array<Value>): bool {
+  for (let i = 0; i + 1 < args.length; i++) {
+    const x = toF64(args[i]);
+    const y = toF64(args[i + 1]);
+    const ok = op == 0 ? x < y : op == 1 ? x > y : op == 2 ? x <= y : x >= y;
+    if (!ok) return false;
+  }
+  if (args.length == 1) toF64(args[0]);
+  return true;
 }

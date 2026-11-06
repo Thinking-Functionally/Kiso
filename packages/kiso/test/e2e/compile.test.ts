@@ -10,7 +10,7 @@ import { hashSet, PersistentHashSet } from '../../src/runtime/hash-set.js';
 import { list, EMPTY_LIST } from '../../src/runtime/list.js';
 import { symbol as runtimeSymbol } from '../../src/runtime/symbol.js';
 import { defprotocol, protocolFn } from '../../src/runtime/protocols.js';
-import { truthy, contains_p, subs, invoke } from '../../src/runtime/core.js';
+import { truthy, contains_p, subs, invoke, ifn } from '../../src/runtime/core.js';
 
 const analyzer = new Analyzer();
 
@@ -19,7 +19,7 @@ const runtime: Record<string, unknown> = {
   vector, keyword, hashMap, hashSet, list, EMPTY_LIST,
   symbol: runtimeSymbol,
   defprotocol, protocolFn,
-  truthy, contains_p, subs, invoke,
+  ifn, truthy, contains_p, subs, invoke,
 };
 const runtimeKeys = Object.keys(runtime);
 const runtimeVals = Object.values(runtime);

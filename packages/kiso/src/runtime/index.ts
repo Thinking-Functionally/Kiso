@@ -5,7 +5,7 @@ export { hashMap, isHashMap } from './hash-map.js';
 export { hashSet, isHashSet } from './hash-set.js';
 export { keyword, isKeyword } from './keyword.js';
 export { symbol, isSymbol } from './symbol.js';
-export { list, cons, EMPTY_LIST, isList } from './list.js';
+export { list, EMPTY_LIST, isList } from './list.js';
 export { Atom, atom, isAtom, deref, reset_m, swap_m } from './atom.js';
 export { equiv } from './equiv.js';
 export { seq, first, rest, next, toArray, into } from './seq.js';
@@ -24,7 +24,7 @@ export {
   number_p, string_p, boolean_p,
   str, count, conj, get, assoc, dissoc,
   map, filter, reduce, apply,
-  identity, constantly, comp, partial,
+  cons, ifn, comparator, identity, constantly, comp, partial,
   name,
   // Map operations
   get_in, assoc_in, update, update_in,
@@ -97,3 +97,4 @@ export {
 export { PersistentTreeMap, isSortedMap, EMPTY_SORTED_MAP } from './sorted-map.js';
 export { PersistentTreeSet, isSortedSet, EMPTY_SORTED_SET } from './sorted-set.js';
 export { transient, persistent_m, conj_m, assoc_m, dissoc_m, disj_m } from './transient.js';
+export * from './extras.js';

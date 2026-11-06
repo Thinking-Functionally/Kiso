@@ -16,7 +16,9 @@ class Cons {
   constructor(first: unknown, rest: List) {
     this._first = first;
     this._rest = rest;
-    this._count = rest._count + 1;
+    // -1 marks a non-list (seq/lazy) tail whose length is unknown
+    const rc = (rest as { _count?: number })._count;
+    this._count = typeof rc === 'number' && rc >= 0 ? rc + 1 : -1;
   }
 }
 

@@ -5,14 +5,17 @@
 
 import { isList, cons as listCons, count as listCount, EMPTY_LIST, list } from './list.js';
 import { isVector, PersistentVector, vector } from './vector.js';
+import { setStructuralHooks } from './hash-map.js';
 import { isHashMap, PersistentHashMap, hashMap as hm } from './hash-map.js';
+import { isArrayMap } from './array-map.js';
 import { isHashSet, PersistentHashSet, hashSet } from './hash-set.js';
 import { isKeyword, type Keyword } from './keyword.js';
 import { isSymbol, type Sym } from './symbol.js';
 import { equiv } from './equiv.js';
-import { seq, first as seqFirst, next as seqNext } from './seq.js';
+import { seq, first as seqFirst, next as seqNext, IndexedSeq } from './seq.js';
 import { isSortedMap, PersistentTreeMap, EMPTY_SORTED_MAP } from './sorted-map.js';
 import { isSortedSet, PersistentTreeSet, EMPTY_SORTED_SET } from './sorted-set.js';
+import { printStr, displayStr } from './printer.js';
 
 // -- Reduced (transducer early termination) --
 
@@ -105,7 +108,7 @@ export function boolean_p(x: unknown): boolean { return typeof x === 'boolean'; 
 export function str(...args: unknown[]): string {
   let result = '';
   for (const a of args) {
-    if (a !== null && a !== undefined) result += String(a);
+    result += displayStr(a);
   }
   return result;
 }
@@ -116,7 +119,13 @@ export function count(coll: unknown): number {
   if (coll === null || coll === undefined) return 0;
   if (typeof coll === 'string') return coll.length;
   if (Array.isArray(coll)) return coll.length;
-  if (isList(coll)) return listCount(coll);
+  if (isList(coll)) {
+    const n = listCount(coll);
+    if (n >= 0) return n;
+    let c = 0;
+    for (let q = seq(coll); q !== null; q = seqNext(q)) c++;
+    return c;
+  }
   if (isVector(coll)) return (coll as PersistentVector).count;
   if (isHashMap(coll)) return (coll as PersistentHashMap).count;
   if (isHashSet(coll)) return (coll as PersistentHashSet).count;
@@ -138,8 +147,20 @@ export function conj(coll: unknown, ...items: unknown[]): unknown {
       result = (result as PersistentHashSet).conj(item);
     } else if (isSortedSet(result)) {
       result = (result as PersistentTreeSet).conj(item);
+    } else if (isHashMap(result) || isSortedMap(result) || isArrayMap(result)) {
+      const m = result as any;
+      if (isVector(item)) {
+        result = m.assoc(nth(item, 0), nth(item, 1));
+      } else if (item === null) {
+        // conj nil onto a map is a no-op
+      } else {
+        for (let e = seq(item); e !== null; e = seqNext(e)) {
+          const kv = seqFirst(e);
+          result = (result as any).assoc(nth(kv, 0), nth(kv, 1));
+        }
+      }
     } else {
-      result = listCons(item, EMPTY_LIST);
+      result = cons(item, result);
     }
   }
   return result;
@@ -302,14 +323,19 @@ export function transduce(xform: Function, f: Function, ...rest: unknown[]): unk
   return xf(acc);
 }
 
-export function apply(f: (...args: unknown[]) => unknown, args: unknown): unknown {
-  const arr: unknown[] = [];
-  let s = seq(args);
+export function apply(f: unknown, ...args: unknown[]): unknown {
+  const arr = args.slice(0, -1);
+  let s = args.length > 0 ? seq(args[args.length - 1]) : null;
   while (s !== null) {
     arr.push(seqFirst(s));
     s = seqNext(s);
   }
-  return f(...arr);
+  return toFn(f)(...arr);
+}
+
+export function cons(x: unknown, coll: unknown): unknown {
+  if (isList(coll)) return listCons(x, coll as any);
+  return listCons(x, (coll instanceof LazySeq ? coll : (seq(coll) ?? EMPTY_LIST)) as any);
 }
 
 // -- Function utilities --
@@ -541,29 +567,34 @@ export function not_any_p(pred_: unknown, coll: unknown): boolean {
   return !some(pred_, coll);
 }
 
+/** Adapt a Clojure comparator (number- or boolean-returning) to a JS sort comparator. */
+export function comparator(c: unknown): (a: unknown, b: unknown) => number {
+  const f = toFn(c);
+  return (a, b) => {
+    const r = f(a, b);
+    if (typeof r === 'boolean') return r ? -1 : (f(b, a) ? 1 : 0);
+    return r as number;
+  };
+}
+
 export function sort(...args: unknown[]): unknown {
-  let comp: ((a: unknown, b: unknown) => number) | null = null;
-  let coll: unknown;
-  if (args.length === 1) { coll = args[0]; }
-  else { comp = args[0] as (a: unknown, b: unknown) => number; coll = args[1]; }
+  const cmp = args.length === 1 ? compare : comparator(args[0]);
+  const coll = args[args.length - 1];
   const arr: unknown[] = [];
   let s = seq(coll);
   while (s !== null) { arr.push(seqFirst(s)); s = seqNext(s); }
-  arr.sort(comp ?? ((a, b) => (a as number) < (b as number) ? -1 : (a as number) > (b as number) ? 1 : 0));
+  arr.sort(cmp);
   return list(...arr);
 }
 
 export function sort_by(keyfn_: unknown, ...args: unknown[]): unknown {
   const keyfn = toFn(keyfn_);
-  let comp: ((a: unknown, b: unknown) => number) | null = null;
-  let coll: unknown;
-  if (args.length === 1) { coll = args[0]; }
-  else { comp = args[0] as (a: unknown, b: unknown) => number; coll = args[1]; }
+  const cmp = args.length === 1 ? compare : comparator(args[0]);
+  const coll = args[args.length - 1];
   const arr: unknown[] = [];
   let s = seq(coll);
   while (s !== null) { arr.push(seqFirst(s)); s = seqNext(s); }
-  const defaultComp = (a: unknown, b: unknown) => (a as number) < (b as number) ? -1 : (a as number) > (b as number) ? 1 : 0;
-  arr.sort((a, b) => (comp ?? defaultComp)(keyfn(a), keyfn(b)));
+  arr.sort((a, b) => cmp(keyfn(a), keyfn(b)));
   return list(...arr);
 }
 
@@ -681,12 +712,12 @@ export function memoize(f: (...args: unknown[]) => unknown): (...args: unknown[]
 // -- Printing --
 
 export function println(...args: unknown[]): void {
-  console.log(args.map(a => a === null || a === undefined ? '' : String(a)).join(' '));
+  console.log(args.map((a) => printStr(a, false)).join(' '));
 }
 
 export function print_fn(...args: unknown[]): void {
   // In browser/Node, use process.stdout if available, else console.log without newline
-  const s = args.map(a => a === null || a === undefined ? '' : String(a)).join(' ');
+  const s = args.map((a) => printStr(a, false)).join(' ');
   if (typeof process !== 'undefined' && process.stdout) {
     process.stdout.write(s);
   } else {
@@ -1205,10 +1236,11 @@ export function invoke(f: unknown, ...args: unknown[]): unknown {
 }
 
 /** Wrap an IFn (map, set, vector, keyword) into a callable function. No-op if already a function. */
-function toFn(f: unknown): (...args: unknown[]) => unknown {
+export function toFn(f: unknown): (...args: unknown[]) => unknown {
   if (typeof f === 'function') return f as (...args: unknown[]) => unknown;
   return (...args: unknown[]) => invoke(f, ...args);
 }
+export const ifn = toFn;
 export function realized_p(x: unknown): boolean { return x instanceof LazySeq ? (x as any).realized : true; }
 
 // -- Numeric --
@@ -1228,6 +1260,16 @@ export function compare(a: unknown, b: unknown): number {
   if (isSymbol(a) && isSymbol(b)) {
     const sa = a.toString(), sb = b.toString();
     return sa < sb ? -1 : sa > sb ? 1 : 0;
+  }
+  if (typeof a === 'boolean' && typeof b === 'boolean') return a === b ? 0 : a ? 1 : -1;
+  if (isVector(a) && isVector(b)) {
+    const ca = (a as PersistentVector).count, cb = (b as PersistentVector).count;
+    if (ca !== cb) return ca < cb ? -1 : 1;
+    for (let i = 0; i < ca; i++) {
+      const c = compare(nth(a, i), nth(b, i));
+      if (c !== 0) return c;
+    }
+    return 0;
   }
   return 0;
 }
@@ -1256,13 +1298,7 @@ export function re_pattern(s: string): RegExp { return new RegExp(s); }
 
 // -- Printing to string --
 
-function prStr(x: unknown): string {
-  if (x === null || x === undefined) return 'nil';
-  if (typeof x === 'string') return `"${x}"`;
-  if (isKeyword(x)) return `:${(x as Keyword).name}`;
-  if (isSymbol(x)) return (x as Sym).name;
-  return String(x);
-}
+const prStr = (x: unknown): string => printStr(x, true);
 
 export function pr_str(...args: unknown[]): string {
   return args.map(prStr).join(' ');
@@ -1273,11 +1309,11 @@ export function prn_str(...args: unknown[]): string {
 }
 
 export function print_str(...args: unknown[]): string {
-  return args.map(x => x == null ? 'nil' : String(x)).join(' ');
+  return args.map((x) => printStr(x, false)).join(' ');
 }
 
 export function println_str(...args: unknown[]): string {
-  return args.map(x => x == null ? 'nil' : String(x)).join(' ') + '\n';
+  return args.map((x) => printStr(x, false)).join(' ') + '\n';
 }
 
 // -- More interop --
@@ -1424,3 +1460,18 @@ export function reset_meta_m(ref: unknown, m: unknown): unknown {
   metaStore.set(ref as object, m);
   return m;
 }
+
+function structuralHash(key: unknown): number | undefined {
+  const coll = isVector(key) || isList(key) || key instanceof LazySeq || isHashMap(key) || isSortedMap(key)
+    || isHashSet(key) || isSortedSet(key) || isArrayMap(key) || key instanceof IndexedSeq;
+  if (!coll) return undefined;
+  const unordered = isHashMap(key) || isSortedMap(key) || isHashSet(key) || isSortedSet(key) || isArrayMap(key);
+  let h = unordered ? 0 : 1;
+  for (let q = seq(key); q !== null; q = seqNext(q)) {
+    const eh = hashKey(seqFirst(q));
+    h = unordered ? (h + eh) | 0 : (Math.imul(31, h) + eh) | 0;
+  }
+  return h;
+}
+
+setStructuralHooks({ hash: structuralHash, eq: equiv });

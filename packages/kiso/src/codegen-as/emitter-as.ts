@@ -142,6 +142,7 @@ const CORE_OPS: Record<string, CoreOp> = {
   'ex-data': { kind: 'value', fn: 'kexData', arity: 1 },
 };
 // Runtime fns taking all arguments as one Array<Value>.
+const CMP_OPS: Record<string, number> = { '<': 0, '>': 1, '<=': 2, '>=': 3 };
 const ARRAY_OPS: Record<string, string> = { vector: 'vector', 'hash-map': 'hashMap', 'pr-str': 'prStr', prn: 'prn', println: 'println', str: 'str', list: 'klist', 'hash-set': 'hashSet', concat: 'kconcat' };
 
 const HOST_FNS: Record<string, { fn: string; arity: number }> = {
@@ -167,7 +168,7 @@ const RUNTIME_IMPORTS = [
   'println', 'prn', 'prStr', 'str',
   'SetV', 'ExInfo', 'EMPTY_SET', 'mkSet', 'hashSet', 'kset', 'kdisj', 'isSet', 'isList', 'isSeq', 'items', 'klist', 'kseq', 'krest', 'knext',
   'kcons', 'kemptyOf', 'kreverse', 'kconcat', 'ktake', 'kdrop', 'kmap2', 'kmap3', 'kmapv', 'kfilter', 'kfilterv', 'kremove', 'ksome',
-  'Rec', 'Reified', 'noImpl', 'kevery', 'kinto', 'krange1', 'krange2', 'krange3', 'kapply', 'lazySeq', 'kdoall', 'kdorun', 'kiterate', 'krepeat1', 'krepeat2', 'kcycle', 'ktakeWhile', 'kdropWhile', 'kmapcat', 'krange0', 'ksort1', 'ksort2', 'ksortBy2', 'ksortBy3', 'kcompare', 'kexInfo', 'kexMessage', 'Sym', 'ksymbol1', 'ksymbol2', 'isSymbol', 'lt3', 'gt3', 'lte3', 'gte3', 'ksqrt', 'kpow', 'kfloor', 'kceil', 'katom', 'kderef', 'kreset', 'kint', 'kint', 'kquot', 'kbitShl', 'kbitShr', 'kbitAnd', 'kbitOr', 'kbitXor', 'kabs', 'kboolean', 'isInteger', 'isFn', 'isSequential', 'isTrue', 'isFalse', 'kname', 'cljstrUpperCase', 'cljstrLowerCase', 'cljstrTrim', 'cljstrBlank', 'cljstrStartsWith', 'cljstrEndsWith', 'cljstrIncludes', 'cljstrReverse', 'cljstrReplace', 'cljstrSplit', 'Atom', 'kswap', 'ksubs2', 'ksubs3', 'cljstrJoin1', 'cljstrJoin2',  'kexData', 'restOf',
+  'Rec', 'Reified', 'noImpl', 'kevery', 'kinto', 'krange1', 'krange2', 'krange3', 'kapply', 'lazySeq', 'kdoall', 'kdorun', 'kiterate', 'krepeat1', 'krepeat2', 'kcycle', 'ktakeWhile', 'kdropWhile', 'kmapcat', 'krange0', 'ksort1', 'ksort2', 'ksortBy2', 'ksortBy3', 'kcompare', 'kexInfo', 'kexMessage', 'Sym', 'ksymbol1', 'ksymbol2', 'isSymbol', 'kcmpN', 'ksqrt', 'kpow', 'kfloor', 'kceil', 'katom', 'kderef', 'kreset', 'kint', 'kint', 'kquot', 'kbitShl', 'kbitShr', 'kbitAnd', 'kbitOr', 'kbitXor', 'kabs', 'kboolean', 'isInteger', 'isFn', 'isSequential', 'isTrue', 'isFalse', 'kname', 'cljstrUpperCase', 'cljstrLowerCase', 'cljstrTrim', 'cljstrBlank', 'cljstrStartsWith', 'cljstrEndsWith', 'cljstrIncludes', 'cljstrReverse', 'cljstrReplace', 'cljstrSplit', 'Atom', 'kswap', 'ksubs2', 'ksubs3', 'cljstrJoin1', 'cljstrJoin2',  'kexData', 'restOf',
 ];
 
 function unsupported(construct: string, reason: string): never {
@@ -457,7 +458,9 @@ class Emitter {
       ? [`    return ${ARRAY_OPS[name]}(args);`]
       : foldFn
         ? [`    if (args.length > ${MAX_DIRECT}) {`, '      let acc = args[0];', `      for (let i = 1; i < args.length; i++) acc = ${foldFn}(acc, args[i]);`, '      return acc;', '    }']
-        : [];
+        : CMP_OPS[name] !== undefined
+          ? [`    if (args.length > 0) return bool_(kcmpN(${CMP_OPS[name]}, args));`]
+          : [];
     this.coreClasses.push(
       [`class ${cls} extends Fn {`, ...methods, '  invoke(args: Array<Value>): Value {', '    switch (args.length) {', ...dispatch, '    }', ...variadic, '    return arityError();', '  }', '}'].join('\n'),
     );
@@ -606,8 +609,9 @@ class Emitter {
       case '>':
       case '<=':
       case '>=':
-        if (a.length === 3) return `bool_(${{ '<': 'lt3', '>': 'gt3', '<=': 'lte3', '>=': 'gte3' }[name]}(${a.join(', ')}))`;
-        return this.tableCall(name, a);
+        if (a.length === 2) return this.tableCall(name, a);
+        if (a.length >= 1) return `bool_(kcmpN(${CMP_OPS[name]}, [${a.join(', ')}]))`;
+        break;
       case 'swap!':
         if (a.length >= 2) return `kswap(${a[0]}, ${a[1]}, [${a.slice(2).join(', ')}])`;
         break;

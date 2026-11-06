@@ -14,7 +14,7 @@ import { isSortedSet } from './sorted-set.js';
 import { LazySeq } from './lazy-seq.js';
 
 // IndexedSeq: seq over a vector or array by index
-class IndexedSeq {
+export class IndexedSeq {
   constructor(readonly coll: PersistentVector | unknown[], readonly index: number) {}
 
   first(): unknown {
@@ -160,10 +160,10 @@ export function into(to: unknown, xformOrFrom: unknown, from?: unknown): unknown
   if (from !== undefined) {
     return transduce(xformOrFrom as Function, conj, to, from);
   }
-  let result = to as PersistentVector;
+  let result: unknown = to;
   let s = seq(xformOrFrom);
   while (s !== null) {
-    result = result.conj(first(s));
+    result = conj(result, first(s));
     s = next(s);
   }
   return result;

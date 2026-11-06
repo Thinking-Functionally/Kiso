@@ -317,6 +317,19 @@ function buildCondChain(pairs: Form[], form: Form): Form {
   return makeList([sym('if'), test, value, buildCondChain(rest, form)], ...loc(form));
 }
 
+// Like cljs.core: 1 arg → (do x true); 2 args stay a direct comparison; n args → chained pairwise, each arg evaluated once.
+for (const op of ['<', '>', '<=', '>=']) {
+  defmacro(op, (items, form) => {
+    const args = items.slice(1);
+    if (args.length === 1) return makeList([sym('do'), nth(args, 0), makeBool(true, ...loc(form))], ...loc(form));
+    if (args.length < 3) return form;
+    const names = args.map(() => sym(`cmp__${++gensymCounter}__auto`));
+    const binds = names.flatMap((n, i) => [n, nth(args, i)]);
+    const checks = names.slice(1).map((n, i) => makeList([sym(op), nth(names, i), n], ...loc(form)));
+    return makeList([sym('let*'), makeVector(binds), makeList([sym('and'), ...checks], ...loc(form))], ...loc(form));
+  });
+}
+
 defmacro('and', (items, form) => {
   // (and) → true
   // (and x) → x

@@ -4,6 +4,57 @@
 // Key semantic: sequential types compare structurally across types.
 // (= '(1 2) [1 2]) → true
 
+import { isList } from './list.js';
+import { isVector } from './vector.js';
+import { isHashMap } from './hash-map.js';
+import { isArrayMap } from './array-map.js';
+import { isSortedMap } from './sorted-map.js';
+import { isHashSet } from './hash-set.js';
+import { isSortedSet } from './sorted-set.js';
+import { LazySeq } from './lazy-seq.js';
+import { IndexedSeq, seq, first, next } from './seq.js';
+
+const isSequentialColl = (x: unknown): boolean => isVector(x) || isList(x) || x instanceof IndexedSeq || x instanceof LazySeq;
+const isMapColl = (x: unknown): boolean => isHashMap(x) || isArrayMap(x) || isSortedMap(x);
+const isSetColl = (x: unknown): boolean => isHashSet(x) || isSortedSet(x);
+
+type Each<T> = { forEach(fn: T): void; has(k: unknown): boolean; get?(k: unknown): unknown };
+
+function mapEquiv(a: Each<(k: unknown, v: unknown) => void>, b: Each<(k: unknown, v: unknown) => void>): boolean {
+  let na = 0;
+  let nb = 0;
+  b.forEach(() => { nb++; });
+  let same = true;
+  a.forEach((k, v) => {
+    na++;
+    if (same && !(b.has(k) && equiv(v, (b as { get(k: unknown): unknown }).get(k)))) same = false;
+  });
+  return same && na === nb;
+}
+
+function setEquiv(a: Each<(k: unknown) => void>, b: Each<(k: unknown) => void>): boolean {
+  let na = 0;
+  let nb = 0;
+  b.forEach(() => { nb++; });
+  let same = true;
+  a.forEach((k) => {
+    na++;
+    if (same && !b.has(k)) same = false;
+  });
+  return same && na === nb;
+}
+
+function seqEquiv(a: unknown, b: unknown): boolean {
+  let sa = seq(a as never);
+  let sb = seq(b as never);
+  while (sa !== null && sb !== null) {
+    if (!equiv(first(sa as never), first(sb as never))) return false;
+    sa = next(sa as never);
+    sb = next(sb as never);
+  }
+  return sa === null && sb === null;
+}
+
 /** Clojure structural equality. */
 export function equiv(a: unknown, b: unknown): boolean {
   // null/undefined
@@ -39,6 +90,10 @@ export function equiv(a: unknown, b: unknown): boolean {
     }
     return true;
   }
+
+  if (isSequentialColl(a)) return isSequentialColl(b) && seqEquiv(a, b);
+  if (isMapColl(a)) return isMapColl(b) && mapEquiv(a as never, b as never);
+  if (isSetColl(a)) return isSetColl(b) && setEquiv(a as never, b as never);
 
   // Indexed collections with .count and .nth (PersistentVector, etc.)
   const ao = a as Record<string, any>;

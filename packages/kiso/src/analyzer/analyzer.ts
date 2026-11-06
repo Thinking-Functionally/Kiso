@@ -112,11 +112,9 @@ export class Analyzer {
     if (form.data.type !== 'list') throw new Error('Expected list');
     const items = form.data.items;
     if (items.length === 0) {
-      if (currentMacroTarget() === 'as') {
-        const head: Form = { ...form, data: { type: 'symbol', ns: null, name: 'list' } } as Form;
-        return this.analyzeList({ ...form, data: { type: 'list', items: [head] } } as Form, scope);
-      }
-      return lit(null, 'null'); // empty list → null (simplified)
+      // () is an empty list (not nil)
+      const head: Form = { ...form, data: { type: 'symbol', ns: null, name: 'list' } } as Form;
+      return this.analyzeList({ ...form, data: { type: 'list', items: [head] } } as Form, scope);
     }
 
     const head = items[0]!;
@@ -397,10 +395,10 @@ export class Analyzer {
       case 'symbol': return {
         type: 'invoke',
         fn: { type: 'var-ref', name: 'symbol', local: false },
-        args: [
-          form.data.ns ? lit(form.data.ns, 'string') : lit(null, 'null'),
-          lit(form.data.name, 'string'),
-        ],
+        // The JS runtime is symbol(name, ns?); the AS runtime is (symbol ns name).
+        args: currentMacroTarget() === 'as'
+          ? [form.data.ns ? lit(form.data.ns, 'string') : lit(null, 'null'), lit(form.data.name, 'string')]
+          : form.data.ns ? [lit(form.data.name, 'string'), lit(form.data.ns, 'string')] : [lit(form.data.name, 'string')],
       };
       case 'keyword': return { type: 'keyword', ns: form.data.ns, name: form.data.name };
       case 'list': return {

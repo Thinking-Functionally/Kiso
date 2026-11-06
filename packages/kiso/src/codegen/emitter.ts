@@ -26,12 +26,32 @@ type EmitCtx = {
   hooks?: Map<string, CodegenHook>;
   runtimeAliases?: Map<string, string>; // munged-name → alias for collided imports
   autoImports?: Map<string, string>; // ns → auto-alias for hook-referenced namespaces
+  declared?: Set<string>; // module-level names already declared with `let`
+  renames?: Map<string, string>; // in-scope local name → JS identifier (set when a binding shadows)
+  shadowNames?: Set<string>; // munged module-level names (user defs, runtime imports) a local must not shadow in its own init
 };
 
 const DEFAULT_CTX: EmitCtx = { loopBindings: null, nsAliases: new Map(), indent: 0 };
 
 function ind(ctx: EmitCtx): string { return '  '.repeat(ctx.indent); }
 function deeper(ctx: EmitCtx): EmitCtx { return { ...ctx, indent: ctx.indent + 1 }; }
+
+let renameSeq = 0;
+
+/** JS identifier for a new let-style binding; renamed when it would shadow a local or module-level name (avoids TDZ and closure capture bugs). */
+function bindLocal(ctx: EmitCtx, renames: Map<string, string>, name: string): string {
+  const base = munge(name);
+  const js = renames.has(name) || ctx.shadowNames?.has(base) ? `${base}__${++renameSeq}` : base;
+  renames.set(name, js);
+  return js;
+}
+
+/** Context in which `names` (fn params, fields, catch bindings) refer to themselves, undoing outer renames. */
+function scopeWith(ctx: EmitCtx, names: string[]): EmitCtx {
+  const renames = new Map(ctx.renames);
+  for (const n of names) renames.set(n, munge(n));
+  return { ...ctx, renames };
+}
 
 function emitNode(node: Node, ctx: EmitCtx): string {
   switch (node.type) {
@@ -45,6 +65,7 @@ function emitNode(node: Node, ctx: EmitCtx): string {
       if (slashIdx > 0) {
         const ns = node.name.slice(0, slashIdx);
         const local = node.name.slice(slashIdx + 1);
+        if (JS_GLOBALS.has(ns)) return `${ns}.${local}`;
         const alias = ctx.nsAliases?.get(ns);
         if (alias) return `${alias}.${munge(local)}`;
         // Check if ns is itself an alias (e.g. su/mount where su is alias for su.core)
@@ -60,6 +81,10 @@ function emitNode(node: Node, ctx: EmitCtx): string {
           }
           return `${ctx.autoImports.get(ns)!}.${munge(local)}`;
         }
+      }
+      if (node.local) {
+        const renamed = ctx.renames?.get(node.name);
+        if (renamed) return renamed;
       }
       const munged = munge(node.name);
       // Use aliased import for runtime functions that collide with user defs
@@ -129,6 +154,13 @@ export function emitModuleWithMappings(nodes: Node[], hooks?: Map<string, Codege
     if (node.type === 'defrecord') { userDefs.add(node.name); userDefs.add(`_to_${node.name}`); userDefs.add(`map_to_${node.name}`); }
   }
 
+  // `def` inside a function/do body assigns a module-level binding that must be declared once
+  const nestedDefs = new Set<string>();
+  for (const node of nodes) if (node.type !== 'def') collectDefs(node, nestedDefs);
+  for (const node of nodes) if (node.type === 'def' && node.init) collectDefs(node.init, nestedDefs);
+  const hoisted = [...nestedDefs].map(munge).filter((n) => !userDefs.has(n));
+  for (const n of hoisted) userDefs.add(n);
+
   // Collect ns alias names (e.g. "str" from `:as str`) that will become `import * as str`
   const nsAliasNames = new Set<string>();
   for (const [, alias] of nsAliases) {
@@ -145,7 +177,9 @@ export function emitModuleWithMappings(nodes: Node[], hooks?: Map<string, Codege
   }
 
   const autoImports = new Map<string, string>();
-  const ctx: EmitCtx = { loopBindings: null, nsAliases, indent: 0, hooks, runtimeAliases, autoImports };
+  const shadowNames = new Set<string>([...userDefs, ...runtimeImports]);
+  const declared = new Set<string>();
+  const ctx: EmitCtx = { loopBindings: null, nsAliases, indent: 0, hooks, runtimeAliases, autoImports, shadowNames, declared };
 
   // Extract the current ns name for resolving auto-import paths
   const currentNs = nodes.find(n => n.type === 'ns')?.name ?? '';
@@ -164,6 +198,9 @@ export function emitModuleWithMappings(nodes: Node[], hooks?: Map<string, Codege
   // Auto-import runtime functions (with aliases for collisions)
   let importOffset = 0;
   const preambleLines: string[] = [];
+  if (hoisted.length > 0) {
+    preambleLines.push(`export let ${hoisted.join(', ')};`);
+  }
   if (runtimeImports.length > 0) {
     const importParts = runtimeImports.map(name =>
       runtimeAliases.has(name) ? `${name} as ${runtimeAliases.get(name)!}` : name,
@@ -188,18 +225,29 @@ export function emitModuleWithMappings(nodes: Node[], hooks?: Map<string, Codege
   let genLine = importOffset;
   for (let i = 0; i < nodeIndices.length; i++) {
     mappings.push({ genLine, nodeIndex: nodeIndices[i]! });
-    const segIdx = runtimeImports.length > 0 ? i + 1 : i;
+    const segIdx = preambleLines.length > 0 ? i + 1 : i;
     genLine += segments[segIdx]!.split('\n').length + 1; // +1 for blank line separator
   }
 
   return { code: segments.join('\n\n'), mappings };
 }
 
+function collectDefs(node: unknown, out: Set<string>): void {
+  if (Array.isArray(node)) { for (const n of node) collectDefs(n, out); return; }
+  if (node === null || typeof node !== 'object') return;
+  const rec = node as Record<string, unknown>;
+  if (rec.type === 'def' && typeof rec.name === 'string') out.add(rec.name);
+  for (const v of Object.values(rec)) if (typeof v === 'object') collectDefs(v, out);
+}
+
 function emitTopLevelCtx(node: Node, ctx: EmitCtx): string {
   if (node.type === 'def') {
     const init = node.init ? emitNode(node.init, ctx) : 'null';
     const prefix = node.doc ? formatJSDoc(node.doc, '') : '';
-    return `${prefix}export let ${munge(node.name)} = ${init};`;
+    const jsName = munge(node.name);
+    if (ctx.declared?.has(jsName)) return `${prefix}${jsName} = ${init};`;
+    ctx.declared?.add(jsName);
+    return `${prefix}export let ${jsName} = ${init};`;
   }
   if (node.type === 'deftype') {
     const code = emitDeftype(node, ctx);
@@ -289,7 +337,9 @@ function emitInvoke(node: { fn: Node; args: Node[] }, ctx: EmitCtx): string {
   if (node.fn.type === 'set' || node.fn.type === 'map' || node.fn.type === 'vector') {
     return `invoke(${emitNode(node.fn, ctx)}, ${node.args.map((n) => emitNode(n, ctx)).join(', ')})`;
   }
-  return `${emitNode(node.fn, ctx)}(${node.args.map((n) => emitNode(n, ctx)).join(', ')})`;
+  // A local may hold a map/set/vector/keyword-like IFn; ifn() passes functions through
+  const callee = node.fn.type === 'var-ref' && node.fn.local ? `ifn(${emitNode(node.fn, ctx)})` : emitNode(node.fn, ctx);
+  return `${callee}(${node.args.map((n) => emitNode(n, ctx)).join(', ')})`;
 }
 
 function ifChainDepth(node: { test: Node; then: Node; else: Node }): number {
@@ -354,15 +404,12 @@ function emitDo(node: { statements: Node[]; ret: Node }, ctx: EmitCtx): string {
 }
 
 function emitLet(node: { bindings: LetBinding[]; body: Node }, ctx: EmitCtx): string {
-  const inner = deeper(ctx);
+  const renames = new Map(ctx.renames);
+  const inner = { ...deeper(ctx), renames };
   const i = ind(inner);
-  const seen = new Set<string>();
   const bindings = node.bindings.map((b) => {
-    const name = munge(b.name);
     const init = emitNode(b.init, inner);
-    if (seen.has(name)) return `${i}${name} = ${init};`;
-    seen.add(name);
-    return `${i}let ${name} = ${init};`;
+    return `${i}let ${bindLocal(ctx, renames, b.name)} = ${init};`;
   }).join('\n');
   return `(() => {\n${bindings}\n${i}return ${emitNode(node.body, inner)};\n${ind(ctx)}})()`;
 }
@@ -393,16 +440,32 @@ function emitFn(node: { name: string | null; arities: FnArity[] }, outerCtx: Emi
   const cases = node.arities.map((arity) => {
     const n = arity.params.length;
     const params = arity.params.map(munge).join(', ');
-    const ctx: EmitCtx = { ...deeper(caseCtx), loopBindings: arity.params };
-    const body = emitNode(arity.body, ctx);
+    const ctx: EmitCtx = { ...scopeWith(deeper(caseCtx), [...arity.params, ...(arity.restParam ? [arity.restParam] : [])]), loopBindings: arity.params };
+    const body = emitFnBody(arity.body, ctx, bi);
     if (arity.restParam) {
-      return `${ci}default: {\n${bi}const [${params}${params ? ', ' : ''}...${munge(arity.restParam)}] = args;\n${bi}return ${body};\n${ci}}`;
+      return `${ci}default: {\n${bi}let [${params}${params ? ', ' : ''}...${munge(arity.restParam)}] = args;\n${bi}${body}\n${ci}}`;
     }
-    return `${ci}case ${n}: {\n${bi}const [${params}] = args;\n${bi}return ${body};\n${ci}}`;
+    return `${ci}case ${n}: {\n${bi}let [${params}] = args;\n${bi}${body}\n${ci}}`;
   }).join('\n');
 
   const si = ind(inner);
   return `function ${name}(...args) {\n${si}switch(args.length) {\n${cases}\n${si}}\n${ind(outerCtx)}}`;
+}
+
+function containsRecur(node: unknown): boolean {
+  if (Array.isArray(node)) return node.some(containsRecur);
+  if (node === null || typeof node !== 'object') return false;
+  const rec = node as Record<string, unknown>;
+  if (rec.type === 'recur') return true;
+  if (rec.type === 'fn' || rec.type === 'loop') return false;
+  return Object.values(rec).some((v) => typeof v === 'object' && containsRecur(v));
+}
+
+/** Function body statements; a body that recurs to the fn itself becomes a `while (true)` loop over the params. */
+function emitFnBody(body: Node, ctx: EmitCtx, indent: string): string {
+  if (!containsRecur(body)) return `return ${emitNode(body, ctx)};`;
+  const inner = deeper(ctx);
+  return `while (true) {\n${indent}  ${emitStmt(body, inner)}\n${indent}}`;
 }
 
 function emitSingleArity(name: string, arity: FnArity, outerCtx: EmitCtx): string {
@@ -411,9 +474,9 @@ function emitSingleArity(name: string, arity: FnArity, outerCtx: EmitCtx): strin
     params.push(`...${munge(arity.restParam)}`);
   }
   const inner = deeper(outerCtx);
-  const ctx: EmitCtx = { ...inner, loopBindings: arity.params };
-  const body = emitNode(arity.body, ctx);
-  return `function ${name}(${params.join(', ')}) {\n${ind(inner)}return ${body};\n${ind(outerCtx)}}`;
+  const ctx: EmitCtx = { ...scopeWith(inner, [...arity.params, ...(arity.restParam ? [arity.restParam] : [])]), loopBindings: arity.params };
+  const body = emitFnBody(arity.body, ctx, ind(inner));
+  return `function ${name}(${params.join(', ')}) {\n${ind(inner)}${body}\n${ind(outerCtx)}}`;
 }
 
 function emitDeftype(node: DeftypeNode, ctx: EmitCtx): string {
@@ -431,8 +494,11 @@ function emitDeftype(node: DeftypeNode, ctx: EmitCtx): string {
     const protoVar = emitNode(impl.protocol, ctx);
     for (const m of impl.methods) {
       const mParams = m.params.slice(1).map(munge);
-      const body = emitNode(m.body, ii);
-      members.push(`${i}[${protoVar}.methods.${m.name}](${mParams.join(', ')}) {\n${i2}return ${body};\n${i}}`);
+      const self = m.params[0] ? munge(m.params[0]) : 'this_';
+      const mctx = scopeWith(ii, [...m.params, ...node.fields]);
+      const unpack = [`const ${self} = this;`, ...node.fields.map((f) => `const ${munge(f)} = this.${munge(f)};`)].map((l) => `${i2}${l}\n`).join('');
+      const body = emitNode(m.body, mctx);
+      members.push(`${i}[${protoVar}.methods.${m.name}](${mParams.join(', ')}) {\n${unpack}${i2}return ${body};\n${i}}`);
     }
   }
   const factoryName = `_to_${name}`;
@@ -455,8 +521,11 @@ function emitDefrecord(node: DefrecordNode, ctx: EmitCtx): string {
     const protoVar = emitNode(impl.protocol, ctx);
     for (const m of impl.methods) {
       const mParams = m.params.slice(1).map(munge);
-      const body = emitNode(m.body, ii);
-      members.push(`${i}[${protoVar}.methods.${m.name}](${mParams.join(', ')}) {\n${i2}return ${body};\n${i}}`);
+      const self = m.params[0] ? munge(m.params[0]) : 'this_';
+      const mctx = scopeWith(ii, [...m.params, ...node.fields]);
+      const unpack = [`const ${self} = this;`, ...node.fields.map((f) => `const ${munge(f)} = this.${munge(f)};`)].map((l) => `${i2}${l}\n`).join('');
+      const body = emitNode(m.body, mctx);
+      members.push(`${i}[${protoVar}.methods.${m.name}](${mParams.join(', ')}) {\n${unpack}${i2}return ${body};\n${i}}`);
     }
   }
   const factoryName = `_to_${name}`;
@@ -478,8 +547,9 @@ function emitReify(node: ReifyNode, ctx: EmitCtx): string {
     const protoVar = emitNode(impl.protocol, ctx);
     for (const m of impl.methods) {
       const mParams = m.params.slice(1).map(munge); // skip 'this'
-      const body = emitNode(m.body, ctx);
-      methods.push(`[${protoVar}.methods.${m.name}](${mParams.join(', ')}) { return ${body}; }`);
+      const self = m.params[0] ? munge(m.params[0]) : 'this_';
+      const body = emitNode(m.body, scopeWith(ctx, m.params));
+      methods.push(`[${protoVar}.methods.${m.name}](${mParams.join(', ')}) { const ${self} = this; return ${body}; }`);
     }
   }
   return `({ ${methods.join(', ')} })`;
@@ -492,8 +562,9 @@ function emitExtendType(node: ExtendTypeNode, ctx: EmitCtx): string {
     const protoVar = emitNode(impl.protocol, ctx);
     for (const m of impl.methods) {
       const mParams = m.params.slice(1).map(munge); // skip 'this'
-      const body = emitNode(m.body, ctx);
-      stmts.push(`${target}.prototype[${protoVar}.methods.${m.name}] = function(${mParams.join(', ')}) { return ${body}; }`);
+      const self = m.params[0] ? munge(m.params[0]) : 'this_';
+      const body = emitNode(m.body, scopeWith(ctx, m.params));
+      stmts.push(`${target}.prototype[${protoVar}.methods.${m.name}] = function(${mParams.join(', ')}) { const ${self} = this; return ${body}; }`);
     }
   }
   return `(${stmts.join(', ')})`;
@@ -516,7 +587,9 @@ function formatJSDoc(doc: string, indent: string): string {
 function emitDef(node: { name: string; init: Node | null; doc: string | null }, ctx: EmitCtx): string {
   const init = node.init ? emitNode(node.init, ctx) : 'null';
   const prefix = node.doc ? formatJSDoc(node.doc, ind(ctx)) : '';
-  return `${prefix}let ${munge(node.name)} = ${init}`;
+  // Standalone emit of a def node declares it; inside a module a nested def assigns the hoisted binding.
+  if (!ctx.declared) return `${prefix}let ${munge(node.name)} = ${init}`;
+  return `(${prefix}${munge(node.name)} = ${init})`;
 }
 
 function emitLoop(node: { bindings: LetBinding[]; body: Node }, ctx: EmitCtx): string {
@@ -525,12 +598,23 @@ function emitLoop(node: { bindings: LetBinding[]; body: Node }, ctx: EmitCtx): s
   const i = ind(inner);
   const i2 = ind(ii);
   const names = node.bindings.map((b) => b.name);
-  const decls = node.bindings.map(
-    (b) => `${i}let ${munge(b.name)} = ${emitNode(b.init, inner)};`,
-  ).join('\n');
-  const loopCtx: EmitCtx = { ...ii, loopBindings: names };
+  // Bindings are parameters of nested arrows, so an init such as (seq xs) still sees the outer `xs`
+  // (a `let xs` in the same scope would be in its temporal dead zone). recur reassigns the parameters.
+  const scopes: Map<string, string>[] = [];
+  const cur = new Map(ctx.renames);
+  for (const n of names) {
+    scopes.push(new Map(cur));
+    cur.set(n, munge(n));
+  }
+  const loopCtx: EmitCtx = { ...ii, loopBindings: names, renames: cur };
   const body = emitStmt(node.body, loopCtx);
-  return `(() => {\n${decls}\n${i}while (true) {\n${i2}${body}\n${i}}\n${ind(ctx)}})()`;
+  let out = `(() => {\n${i}while (true) {\n${i2}${body}\n${i}}\n${ind(ctx)}})()`;
+  for (let k = node.bindings.length - 1; k >= 0; k--) {
+    const b = node.bindings[k]!;
+    const argCtx: EmitCtx = { ...(k === 0 ? ctx : inner), renames: scopes[k] };
+    out = `((${munge(b.name)}) => ${out})(${emitNode(b.init, argCtx)})`;
+  }
+  return out;
 }
 
 /** Emit a node as a statement that may contain recur. */
@@ -554,10 +638,13 @@ function emitStmt(node: Node, ctx: EmitCtx): string {
     return `${stmts}\n${i}${ret}`;
   }
   if (node.type === 'let') {
-    const bindings = node.bindings.map(
-      (b) => `const ${munge(b.name)} = ${emitNode(b.init, ctx)};`,
-    ).join('\n' + i);
-    return `${bindings}\n${i}${emitStmt(node.body, ctx)}`;
+    const renames = new Map(ctx.renames);
+    const lctx = { ...ctx, renames };
+    const bindings = node.bindings.map((b) => {
+      const init = emitNode(b.init, lctx);
+      return `const ${bindLocal(ctx, renames, b.name)} = ${init};`;
+    }).join('\n' + i);
+    return `${bindings}\n${i}${emitStmt(node.body, lctx)}`;
   }
   if (node.type === 'letfn') {
     const decls = node.bindings.map((b) => munge(b.name)).join(', ');
@@ -603,12 +690,12 @@ function emitTry(
   if (node.catches.length > 0) {
     if (node.catches.length === 1 && node.catches[0]!.exType === ':default') {
       const c = node.catches[0]!;
-      catchBlock = ` catch (${munge(c.binding)}) {\n${i2}return ${emitNode(c.body, ii)};\n${i}}`;
+      catchBlock = ` catch (${munge(c.binding)}) {\n${i2}return ${emitNode(c.body, scopeWith(ii, [c.binding]))};\n${i}}`;
     } else {
       const catchVar = 'catch__auto';
       const branches = node.catches.map((c) => {
         const bindingName = munge(c.binding);
-        const bodyExpr = emitNode(c.body, ii);
+        const bodyExpr = emitNode(c.body, scopeWith(ii, [c.binding]));
         if (c.exType === ':default') {
           return `{\n${i2}let ${bindingName} = ${catchVar};\n${i2}return ${bodyExpr};\n${i}}`;
         }
@@ -749,6 +836,10 @@ const RUNTIME_FUNCTIONS = new Set([
   'invoke',
   // Transducer support
   'transduce', 'completing', 'reduced', 'reduced?', 'unreduced', 'ensure-reduced',
+  // extras.ts
+  'vec', 'mapv', 'vector?', 'list?', 'true?', 'false?', 'boolean', 'hash-map', 'int', 'long', 'short',
+  'bit-and', 'bit-or', 'bit-xor', 'bit-not', 'bit-shift-left', 'bit-shift-right', 'distinct?', 'disj',
+  'ifn', 'min-key', 'max-key', 'split-at', 'split-with', 'sequence', 'rseq', 'shuffle', 'key', 'val', 'namespace',
 ]);
 
 /** Scan AST for runtime function usage and return needed import names. */
@@ -806,6 +897,7 @@ function scanNodeForRuntime(node: Node, used: Set<string>): void {
       if (node.fn.type === 'set' || node.fn.type === 'map' || node.fn.type === 'vector') {
         used.add('invoke');
       }
+      if (node.fn.type === 'var-ref' && node.fn.local) used.add('ifn');
       scanNodeForRuntime(node.fn, used);
       for (const a of node.args) scanNodeForRuntime(a, used);
       break;
@@ -891,7 +983,21 @@ function scanNodeForRuntime(node: Node, used: Set<string>): void {
 
 // -- Name Munging --
 
+const JS_GLOBALS = new Set(['Math', 'JSON', 'Number', 'String', 'Object', 'Array', 'Date', 'Promise', 'Symbol', 'Reflect', 'BigInt']);
+
+const JS_RESERVED = new Set([
+  'break', 'case', 'catch', 'class', 'const', 'continue', 'debugger', 'default', 'delete', 'do', 'else', 'enum', 'export',
+  'extends', 'false', 'finally', 'for', 'function', 'if', 'import', 'in', 'instanceof', 'new', 'null', 'return', 'super',
+  'switch', 'this', 'throw', 'true', 'try', 'typeof', 'var', 'void', 'while', 'with', 'yield', 'let', 'static', 'await',
+  'implements', 'interface', 'package', 'private', 'protected', 'public', 'arguments', 'eval',
+]);
+
 export function munge(name: string): string {
+  const out = mungeRaw(name);
+  return JS_RESERVED.has(out) ? `${out}_` : out;
+}
+
+function mungeRaw(name: string): string {
   // Standalone operators → readable names
   switch (name) {
     case '-': return 'subtract';

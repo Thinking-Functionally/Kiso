@@ -67,8 +67,9 @@ export function parseCounts(out: string): Counts {
 
 export function runJs(src: string, loadNs: (ns: string) => { source: string } | null): string {
   const code = compile(src, { target: 'js', loadNs, features: ['cljs'], testMacros: true })
-    .code.replace(/^import \* as (\w+) from 'clojure\/(\w+)\.js';\s*$/gm, (_m, v: string, mod: string) => `const ${v} = ${mod === 'string' ? '__str' : '{}'};`)
-    .replace(/^import \{([^}]*)\} from [^;]+;\s*$/gm, (_m, names: string) => `const {${names}} = __rt;`)
+    .code.replace(/^import '[^']+';\s*$/gm, '')
+    .replace(/^import \* as (\w+) from '([^']+)';\s*$/gm, (_m, v: string, mod: string) => `const ${v} = ${mod === 'clojure/string.js' ? '__str' : '{}'};`)
+    .replace(/^import \{([^}]*)\} from [^;]+;\s*$/gm, (_m, names: string) => `const {${names.replace(/ as /g, ': ')}} = __rt;`)
     .replace(/^export (let|const|function) /gm, '$1 ');
   const lines: string[] = [];
   const orig = console.log;
