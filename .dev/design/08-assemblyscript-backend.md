@@ -188,6 +188,27 @@ Support status is tracked in `.dev/status/vars.yaml` (new `as` field: `full` / `
 | M5 | Serverless target: `--worker`, `kiso_handle`, `createWorker`, JSON host fns (D24; `host/fetch` deferred) |
 | M6 | Full-stack: reader conditionals, AS module linking, `kiso serve`, `examples/fullstack` (D25) |
 
+## core.async (D30)
+
+`go`, `go-loop`, `chan` (fixed / dropping / sliding buffers), `put!`, `take!`, `close!`, `offer!`,
+`alts!`, `timeout` work on both backends and are differential-tested (`test/codegen/core-async-cases.ts`).
+
+- **Transform**: `go`/`go-loop` expand to the special form `go*`; `src/analyzer/go.ts` CPS-transforms the
+  analyzed Nodes (the JVM core.async also transforms an analyzer AST; CLJS transforms Forms instead).
+  Parks (`<!`, `>!`, `alts!`) become `take!` / `put!` / `go-alts` callbacks. `if`/`let`/`letfn`/`case*` share a join
+  continuation. A parking `loop` becomes a recursive `letfn`; `recur` goes through `go-dispatch`, so the stack stays flat.
+  The output only uses `fn` / `let` / `letfn` / `if` / `invoke`, so neither emitter needs special support.
+- **Limits** (same as core.async): no park inside a nested `fn`; no park inside `try`.
+- **Opt-in**: `go`/`go-loop` are active only when the ns requires `clojure.core.async` (`async-ns.ts` strips the
+  spec and de-aliases symbols), so user code may define its own `go`.
+- **JS**: `src/runtime/async.ts`; callbacks are queued and drained on a microtask.
+- **AS**: channels and a task queue in `as-runtime/kiso-runtime.ts`. `kdrain()` runs after `-main` (only emitted when the
+  module uses async). When only timers remain it sleeps through `host.sleep` (optional import, `HostOptions.sleep`).
+
+`future` is not provided (it has no CLJS equivalent; use core.async). JS also gains `StackOverflowError`, `Throwable`
+and `Exception` for `catch` / `instance?` (structural `Symbol.hasInstance` over `RangeError` / `Error`). Not planned:
+`eval` (needs the compiler and a global var table at runtime) and catching stack overflow on AS (a wasm trap).
+
 ## Open Questions
 
 1. `Value` representation: class hierarchy (initial choice) vs tagged union / `externref`.

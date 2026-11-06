@@ -144,9 +144,9 @@
   "depth": {
     "js": {
       "status": "ran",
-      "pass": 13,
+      "pass": 19,
       "fail": 0,
-      "error": 9,
+      "error": 4,
       "skip": 0
     },
     "as": {

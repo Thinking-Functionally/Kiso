@@ -123,3 +123,15 @@ export const Integer = {
 };
 export const Long = { parseLong: (s: string): number => parseInt(s, 10), valueOf: Integer.valueOf, MAX_VALUE: Number.MAX_SAFE_INTEGER, MIN_VALUE: Number.MIN_SAFE_INTEGER };
 export const Double = { parseDouble: (s: string): number => parseFloat(s), valueOf: (x: unknown): number => Number(x) };
+
+// -- JVM exception classes for `catch`/`instance?` (matched structurally against JS errors) --
+
+const isError = (x: unknown): boolean => x instanceof Error;
+export class Throwable { static [Symbol.hasInstance](x: unknown): boolean { return isError(x); } }
+export class Exception { static [Symbol.hasInstance](x: unknown): boolean { return isError(x) && !StackOverflowError[Symbol.hasInstance](x); } }
+/** V8/SpiderMonkey/JSC raise RangeError ("Maximum call stack size exceeded" / "too much recursion"). */
+export class StackOverflowError {
+  static [Symbol.hasInstance](x: unknown): boolean {
+    return x instanceof RangeError && /call stack|too much recursion/i.test(x.message);
+  }
+}

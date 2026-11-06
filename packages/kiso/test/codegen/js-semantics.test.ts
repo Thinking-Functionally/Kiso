@@ -111,3 +111,15 @@ describe('JS backend: equality and hashing', () => {
     expect(run('(defn -main [] (println nil 1))')).toBe('nil 1');
   });
 });
+
+describe('JS backend: JVM exception classes', () => {
+  it('runaway recursion is a catchable StackOverflowError (and a Throwable)', () => {
+    const src = '(defn runaway [n] (inc (runaway (inc n)))) ';
+    expect(run(`${src}(defn -main [] (println (try (runaway 0) false (catch StackOverflowError _ true))))`)).toBe('true');
+    expect(run(`${src}(defn -main [] (println (instance? Throwable (try (runaway 0) (catch Throwable t t)))))`)).toBe('true');
+  });
+
+  it('Exception does not swallow StackOverflowError', () => {
+    expect(run('(defn -main [] (println (try (throw (js/Error. "x")) (catch Exception e :caught))))')).toBe(':caught');
+  });
+});

@@ -830,6 +830,7 @@ const RUNTIME_FUNCTIONS = new Set([
   'pr-str', 'prn-str', 'print-str', 'println-str',
   'array', 'aclone', 'js-delete',
   'hash', 'type', 'instance?',
+  'StackOverflowError', 'Throwable', 'Exception',
   'prn', 'pr',
   'reversible?', 'sorted?',
   'satisfies?', 'implements?',
@@ -945,7 +946,10 @@ function scanNodeForRuntime(node: Node, used: Set<string>): void {
     }
     case 'try': {
       scanNodeForRuntime(node.body, used);
-      for (const c of node.catches) scanNodeForRuntime(c.body, used);
+      for (const c of node.catches) {
+        if (RUNTIME_FUNCTIONS.has(c.exType)) used.add(munge(c.exType));
+        scanNodeForRuntime(c.body, used);
+      }
       if (node.finally) scanNodeForRuntime(node.finally, used);
       break;
     }
