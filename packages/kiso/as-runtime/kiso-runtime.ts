@@ -682,6 +682,9 @@ export function isSome(v: Value): bool {
 export function isNumber(v: Value): bool {
   return v instanceof Num;
 }
+export function isBoolean(v: Value): bool {
+  return v instanceof Bool;
+}
 export function isString(v: Value): bool {
   return v instanceof Str;
 }
