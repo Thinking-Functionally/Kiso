@@ -8,6 +8,7 @@ import { compile } from '../../src/api/compiler.js';
 import * as rt from '../../src/runtime/index.js';
 import * as rtString from '../../src/runtime/string.js';
 import * as rtSet from '../../src/runtime/set.js';
+import * as rtWalk from '../../src/runtime/walk.js';
 import * as rtEdn from '../../src/runtime/edn.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -70,11 +71,11 @@ export function parseCounts(out: string): Counts {
 function evalJs(src: string, loadNs: (ns: string) => { source: string } | null, lines: string[]): void {
   const code = compile(src, { target: 'js', loadNs, features: ['cljs'], testMacros: true })
     .code.replace(/^import '[^']+';\s*$/gm, '')
-    .replace(/^import \* as (\w+) from '([^']+)';\s*$/gm, (_m, v: string, mod: string) => `const ${v} = ${mod === 'clojure/string.js' ? '__str' : mod === 'clojure/set.js' ? '__set' : mod === 'clojure/edn.js' ? '__edn' : '{}'};`)
+    .replace(/^import \* as (\w+) from '([^']+)';\s*$/gm, (_m, v: string, mod: string) => `const ${v} = ${mod === 'clojure/string.js' ? '__str' : mod === 'clojure/set.js' ? '__set' : mod === 'clojure/edn.js' ? '__edn' : mod === 'clojure/walk.js' ? '__walk' : '{}'};`)
     .replace(/^import \{([^}]*)\} from [^;]+;\s*$/gm, (_m, names: string) => `const {${names.replace(/ as /g, ': ')}} = __rt;`)
     .replace(/^export (let|const|function) /gm, '$1 ');
   // eslint-disable-next-line no-new-func -- test-only: evaluating compiler output
-  new Function('__rt', '__str', '__set', '__edn', code)(rt, rtString, rtSet, rtEdn);
+  new Function('__rt', '__str', '__set', '__edn', '__walk', code)(rt, rtString, rtSet, rtEdn, rtWalk);
 }
 
 export function runJs(src: string, loadNs: (ns: string) => { source: string } | null): string {

@@ -42,7 +42,7 @@ function splitNs(f: Form): { ns: string; names: Set<string>; stripped: Form } {
 type Spec = { ns: string; alias: string | null; refer: string[]; form: Form };
 
 // Library namespaces provided by the AS runtime/prelude under a name prefix (`str/join` -> `cljstr-join`).
-const BUILTIN: Record<string, string> = { 'clojure.string': 'cljstr-', 'clojure.set': 'cljset-' };
+const BUILTIN: Record<string, string> = { 'clojure.string': 'cljstr-', 'clojure.set': 'cljset-', 'clojure.walk': 'cljwalk-' };
 
 function requireSpecs(f: Form): Spec[] {
   const out: Spec[] = [];

@@ -178,6 +178,40 @@ const PRELUDE = `
   ([xf f init coll] (let [rf (xf f)] (rf (reduce rf init coll)))))
 (defn into-xf [to xf from]
   (transduce xf (fn ([acc] acc) ([acc x] (conj acc x))) to from))
+(defn cljset-rename-keys [m kmap]
+  (reduce (fn [acc k]
+            (if (contains? m k) (assoc acc (get kmap k) (get m k)) acc))
+          (reduce dissoc m (keys kmap))
+          (keys kmap)))
+(defn cljset-map-invert [m] (reduce (fn [acc k] (assoc acc (get m k) k)) {} (keys m)))
+(defn cljset-project [xrel ks] (set (map (fn [m] (select-keys m ks)) xrel)))
+(defn cljset-rename [xrel kmap] (set (map (fn [m] (cljset-rename-keys m kmap)) xrel)))
+(defn cljset-index [xrel ks]
+  (reduce (fn [acc m] (let [k (select-keys m ks)] (assoc acc k (conj (get acc k #{}) m)))) {} xrel))
+(defn cljwalk-walk [inner outer form]
+  (if (list? form)
+    (outer (apply list (map inner form)))
+    (if (map? form)
+      (outer (reduce (fn [m e] (let [r (inner e)] (assoc m (first r) (second r)))) {} form))
+      (if (vector? form)
+        (outer (mapv inner form))
+        (if (set? form)
+          (outer (set (map inner form)))
+          (if (seq? form) (outer (doall (map inner form))) (outer form)))))))
+(defn cljwalk-postwalk [f form] (cljwalk-walk (fn [x] (cljwalk-postwalk f x)) f form))
+(defn cljwalk-prewalk [f form] (cljwalk-walk (fn [x] (cljwalk-prewalk f x)) identity (f form)))
+(defn cljwalk-postwalk-replace [smap form]
+  (cljwalk-postwalk (fn [x] (if (contains? smap x) (get smap x) x)) form))
+(defn cljwalk-prewalk-replace [smap form]
+  (cljwalk-prewalk (fn [x] (if (contains? smap x) (get smap x) x)) form))
+(defn cljwalk-keywordize-keys [m]
+  (cljwalk-postwalk
+    (fn [x] (if (map? x) (reduce (fn [acc k] (assoc acc (if (string? k) (keyword k) k) (get x k))) {} (keys x)) x))
+    m))
+(defn cljwalk-stringify-keys [m]
+  (cljwalk-postwalk
+    (fn [x] (if (map? x) (reduce (fn [acc k] (assoc acc (if (keyword? k) (name k) k) (get x k))) {} (keys x)) x))
+    m))
 (defn cljset-union [& sets] (reduce (fn [acc s] (reduce conj acc s)) #{} sets))
 (defn cljset-intersection [a & more]
   (reduce (fn [acc s] (reduce (fn [r x] (if (contains? s x) (conj r x) r)) #{} acc)) a more))

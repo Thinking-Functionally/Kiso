@@ -1224,22 +1224,46 @@ export function set(coll: unknown): unknown {
 export { sortedMap as sorted_map, isSortedMap as sorted_map_p } from './sorted-map.js';
 export { sortedSet as sorted_set, isSortedSet as sorted_set_p } from './sorted-set.js';
 
-export function sorted_map_by(cmp: (a: unknown, b: unknown) => number, ...kvs: unknown[]): PersistentTreeMap {
-  let m = new PersistentTreeMap(null, 0, cmp);
+// Clojure comparators may be boolean predicates (e.g. `>`) as well as 3-way number comparators.
+function asComparator(f: (a: unknown, b: unknown) => unknown): (a: unknown, b: unknown) => number {
+  return (a, b) => {
+    const r = f(a, b);
+    if (typeof r === 'boolean') return r ? -1 : f(b, a) ? 1 : 0;
+    return r as number;
+  };
+}
+
+export function sorted_map_by(cmp: (a: unknown, b: unknown) => unknown, ...kvs: unknown[]): PersistentTreeMap {
+  let m = new PersistentTreeMap(null, 0, asComparator(cmp));
   for (let i = 0; i < kvs.length; i += 2) {
     m = m.assoc(kvs[i], kvs[i + 1]);
   }
   return m;
 }
 
-export function subseq(sc: unknown, fromKey: unknown, inclusive = true): unknown[] {
-  if (isSortedMap(sc)) return (sc as PersistentTreeMap).subseq(fromKey, inclusive);
-  return [];
+function sortedEntries(sc: unknown, tests: [Function, unknown][]): unknown[] {
+  if (!isSortedMap(sc)) return [];
+  const m = sc as PersistentTreeMap;
+  const cmp = m.comparator();
+  const ks = m.keys();
+  const vs = m.vals();
+  const out: unknown[] = [];
+  ks.forEach((k, i) => {
+    if (tests.every(([t, key]) => t(cmp(k, key), 0))) out.push(vector(k, vs[i]));
+  });
+  return out;
 }
 
-export function rsubseq(sc: unknown, toKey: unknown, inclusive = true): unknown[] {
-  if (isSortedMap(sc)) return (sc as PersistentTreeMap).rsubseq(toKey, inclusive);
-  return [];
+/** (subseq sc test key) or (subseq sc start-test start-key end-test end-key), ascending. */
+export function subseq(sc: unknown, test: Function, key: unknown, test2?: Function, key2?: unknown): unknown {
+  const entries = sortedEntries(sc, test2 ? [[test, key], [test2, key2]] : [[test, key]]);
+  return entries.length === 0 ? null : list(...entries);
+}
+
+/** Same as subseq, in descending order. */
+export function rsubseq(sc: unknown, test: Function, key: unknown, test2?: Function, key2?: unknown): unknown {
+  const entries = sortedEntries(sc, test2 ? [[test, key], [test2, key2]] : [[test, key]]).reverse();
+  return entries.length === 0 ? null : list(...entries);
 }
 
 // -- More predicates --

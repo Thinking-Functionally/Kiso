@@ -2087,6 +2087,13 @@ export function kname(v: Value): Value {
   abort("name: not a keyword or string");
   return NIL;
 }
+export function kkeyword(v: Value): Value {
+  if (v instanceof Kw) return v;
+  if (!(v instanceof Str)) abort("keyword: expected a string or keyword");
+  const s = changetype<Str>(v).v;
+  const i = s.indexOf("/");
+  return i > 0 ? new Kw(s.substring(0, i), s.substring(i + 1)) : new Kw("", s);
+}
 export function knamespace(v: Value): Value {
   let ns = "";
   if (v instanceof Kw) ns = changetype<Kw>(v).ns;

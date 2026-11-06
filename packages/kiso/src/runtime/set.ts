@@ -2,6 +2,7 @@
 
 import { PersistentHashSet, EMPTY_SET } from './hash-set.js';
 import { PersistentHashMap, EMPTY_MAP } from './hash-map.js';
+import { toArray } from './seq.js';
 
 /** Returns the union of the input sets. */
 export function union(...sets: PersistentHashSet[]): PersistentHashSet {
@@ -87,12 +88,13 @@ export function map_invert(map: PersistentHashMap): PersistentHashMap {
 }
 
 /** Returns a set of maps with only the specified keys. */
-export function project(xrel: PersistentHashSet, ks: unknown[]): PersistentHashSet {
+export function project(xrel: PersistentHashSet, ks: unknown): PersistentHashSet {
+  const keys = toArray(ks as never);
   let result = EMPTY_SET;
   xrel.forEach((row: unknown) => {
     const m = row as PersistentHashMap;
     let projected = EMPTY_MAP;
-    for (const k of ks) {
+    for (const k of keys) {
       if (m.has(k)) {
         projected = projected.assoc(k, m.get(k));
       }
@@ -112,13 +114,14 @@ export function rename(xrel: PersistentHashSet, kmap: PersistentHashMap): Persis
 }
 
 /** Returns a map from key-map to set of matching rows. */
-export function index(xrel: PersistentHashSet, ks: unknown[]): PersistentHashMap {
+export function index(xrel: PersistentHashSet, ks: unknown): PersistentHashMap {
+  const keys = toArray(ks as never);
   let result = EMPTY_MAP;
   xrel.forEach((row: unknown) => {
     const m = row as PersistentHashMap;
     // Build the key-map: select only the index keys
     let keyMap = EMPTY_MAP;
-    for (const k of ks) {
+    for (const k of keys) {
       if (m.has(k)) keyMap = keyMap.assoc(k, m.get(k));
     }
     const existing = result.get(keyMap) as PersistentHashSet | null;
