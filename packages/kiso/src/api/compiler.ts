@@ -2,6 +2,7 @@
 //
 // Single-entry-point for compiling ClojureScript to JavaScript.
 
+import { setMacroTarget } from '../analyzer/macros.js';
 import { linkModules, type NsLoader } from '../codegen-as/modules.js';
 import { readStr, readAllStr } from '../reader/reader.js';
 import { Analyzer } from '../analyzer/analyzer.js';
@@ -108,6 +109,7 @@ export function compile(source: string, options?: CompileOptions): CompileResult
   }
 
   let nodes: Node[];
+  setMacroTarget(options?.target === 'as' ? 'as' : 'js');
   try {
     nodes = forms.map((f) => {
       try {
@@ -126,6 +128,8 @@ export function compile(source: string, options?: CompileOptions): CompileResult
   } catch (err) {
     if (err instanceof CompileError) throw err;
     throw wrapError(err, 'analyze', filename);
+  } finally {
+    setMacroTarget('js');
   }
 
   if (options?.target === 'as') {

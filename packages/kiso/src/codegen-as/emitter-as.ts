@@ -84,7 +84,19 @@ const CORE_OPS: Record<string, CoreOp> = {
   remove: { kind: 'value', fn: 'kremove', arity: 2 },
   some: { kind: 'value', fn: 'ksome', arity: 2 },
   into: { kind: 'value', fn: 'kinto', arity: 2 },
-  range: { kind: 'value', fn: 'krange', arity: [1, 2, 3], sfx: true },
+  range: { kind: 'value', fn: 'krange', arity: [0, 1, 2, 3], sfx: true },
+  'lazy-seq*': { kind: 'value', fn: 'lazySeq', arity: 1 },
+  doall: { kind: 'value', fn: 'kdoall', arity: 1 },
+  dorun: { kind: 'value', fn: 'kdorun', arity: 1 },
+  iterate: { kind: 'value', fn: 'kiterate', arity: 2 },
+  repeat: { kind: 'value', fn: 'krepeat', arity: [1, 2], sfx: true },
+  cycle: { kind: 'value', fn: 'kcycle', arity: 1 },
+  'take-while': { kind: 'value', fn: 'ktakeWhile', arity: 2 },
+  'drop-while': { kind: 'value', fn: 'kdropWhile', arity: 2 },
+  mapcat: { kind: 'value', fn: 'kmapcat', arity: 2 },
+  sort: { kind: 'value', fn: 'ksort', arity: [1, 2], sfx: true },
+  'sort-by': { kind: 'value', fn: 'ksortBy', arity: [2, 3], sfx: true },
+  compare: { kind: 'value', fn: 'kcompare', arity: 2 },
   'ex-info': { kind: 'value', fn: 'kexInfo', arity: 2 },
   'ex-message': { kind: 'value', fn: 'kexMessage', arity: 1 },
   'ex-data': { kind: 'value', fn: 'kexData', arity: 1 },
@@ -115,7 +127,7 @@ const RUNTIME_IMPORTS = [
   'println', 'prn', 'prStr', 'str',
   'SetV', 'ExInfo', 'EMPTY_SET', 'mkSet', 'hashSet', 'kset', 'kdisj', 'isSet', 'isList', 'isSeq', 'items', 'klist', 'kseq', 'krest', 'knext',
   'kcons', 'kemptyOf', 'kreverse', 'kconcat', 'ktake', 'kdrop', 'kmap2', 'kmap3', 'kmapv', 'kfilter', 'kfilterv', 'kremove', 'ksome',
-  'Rec', 'Reified', 'noImpl', 'kevery', 'kinto', 'krange1', 'krange2', 'krange3', 'kapply', 'kexInfo', 'kexMessage', 'kexData', 'restOf',
+  'Rec', 'Reified', 'noImpl', 'kevery', 'kinto', 'krange1', 'krange2', 'krange3', 'kapply', 'lazySeq', 'kdoall', 'kdorun', 'kiterate', 'krepeat1', 'krepeat2', 'kcycle', 'ktakeWhile', 'kdropWhile', 'kmapcat', 'krange0', 'ksort1', 'ksort2', 'ksortBy2', 'ksortBy3', 'kcompare', 'kexInfo', 'kexMessage', 'kexData', 'restOf',
 ];
 
 function unsupported(construct: string, reason: string): never {
@@ -594,6 +606,7 @@ class Emitter {
         return `mkSet([${this.args(e.items).join(', ')}])`;
       case 'new': {
         const t = e.ctor.type === 'var' && e.ctor.kind === 'global' ? this.types.get(e.ctor.name) : undefined;
+        if (!t && e.ctor.type === 'var' && e.ctor.name === 'LazySeq' && e.args.length === 1) return `lazySeq(${this.expr(e.args[0]!)})`;
         if (!t) return unsupported('new', 'only deftype/defrecord types of this module can be constructed');
         if (e.args.length !== t.fields.length) return unsupported(`(${t.name}. …)`, `expects ${t.fields.length} argument(s), got ${e.args.length}`);
         return `new ${t.cls}(${this.args(e.args).join(', ')})`;

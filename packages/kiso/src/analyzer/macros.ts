@@ -18,6 +18,14 @@ import {
 type MacroFn = (items: Form[], form: Form) => Form;
 
 const MACROS = new Map<string, MacroFn>();
+// Macros that replace the shared ones when compiling for the AssemblyScript backend.
+const AS_MACROS = new Map<string, MacroFn>();
+let macroTarget: 'js' | 'as' = 'js';
+
+/** Select which macro set expands forms (the JS set is the default). */
+export function setMacroTarget(target: 'js' | 'as'): void {
+  macroTarget = target;
+}
 
 function defmacro(name: string, fn: MacroFn): void {
   MACROS.set(name, fn);
@@ -37,7 +45,7 @@ export function expandOnce(form: Form): Form {
   if (items.length === 0) return form;
   const head = items[0]!;
   if (head.data.type !== 'symbol' || head.data.ns !== null) return form;
-  const macroFn = MACROS.get(head.data.name);
+  const macroFn = (macroTarget === 'as' ? AS_MACROS.get(head.data.name) : undefined) ?? MACROS.get(head.data.name);
   if (!macroFn) return form;
   return macroFn(items, form);
 }
@@ -872,6 +880,46 @@ defmacro('for', (items, form) => {
       makeList([sym('js*'), makeStr(`vector(...${(resultSym.data as { name: string }).name})`)]),
     ]),
   ], ...loc(form));
+});
+
+// AS `for`: lazy, built from map/filter/mapcat/take-while (the JS version is eager and uses js*).
+// Supported modifiers: :when / :let anywhere after a binding, :while directly after a binding.
+AS_MACROS.set('for', (items, form) => {
+  const bindings = nth(items, 1);
+  if (bindings.data.type !== 'vector') throw new Error('for requires a vector');
+  const body = items.slice(2);
+  const bodyExpr = body.length === 1 ? body[0]! : makeList([sym('do'), ...body], ...loc(form));
+  const segs = parseSeqBindings(bindings.data.items);
+  const at = loc(form);
+  const call = (name: string, ...args: Form[]) => makeList([sym(name), ...args], ...at);
+  const lam = (name: Form, inner: Form) => makeList([sym('fn'), makeVector([name]), inner], ...at);
+
+  const build = (i: number): Form => {
+    const seg = segs[i];
+    if (!seg || seg.type !== 'bind') throw new Error('for: expected a binding');
+    let j = i + 1;
+    const mods: BindSeg[] = [];
+    while (j < segs.length && segs[j]!.type !== 'bind') mods.push(segs[j++]!);
+    let coll = seg.coll;
+    if (mods[0]?.type === 'while') {
+      coll = call('take-while', lam(seg.name, (mods.shift() as { pred: Form }).pred), coll);
+    }
+    if (mods.some((m) => m.type === 'while')) throw new Error('for: :while is only supported directly after a binding');
+    const last = j >= segs.length;
+    if (last && mods.every((m) => m.type === 'when')) {
+      const filtered = mods.reduce((c, m) => call('filter', lam(seg.name, (m as { pred: Form }).pred), c), coll);
+      return call('map', lam(seg.name, bodyExpr), filtered);
+    }
+    let inner: Form = last ? makeVector([bodyExpr], ...at) : build(j);
+    for (let k = mods.length - 1; k >= 0; k--) {
+      const m = mods[k]!;
+      inner = m.type === 'when'
+        ? makeList([sym('if'), m.pred, inner, makeVector([], ...at)], ...at)
+        : makeList([sym('let'), (m as { bindings: Form }).bindings, inner], ...at);
+    }
+    return call('mapcat', lam(seg.name, inner), coll);
+  };
+  return build(0);
 });
 
 // ── Multimethods ──

@@ -250,6 +250,12 @@ export function hashOf(v: Value): i32 {
     for (let i = 0; i < x.n; i++) h = h * 31 + hashOf(unchecked(x.a[i]));
     return h;
   }
+  if (v instanceof LazySeq) {
+    const a = lazyItems(v);
+    let h: i32 = 1;
+    for (let i = 0; i < a.length; i++) h = h * 31 + hashOf(a[i]);
+    return h;
+  }
   if (v instanceof MapV) {
     const m = changetype<MapV>(v);
     let h: i32 = 0;
@@ -282,6 +288,17 @@ export function eq(a: Value, b: Value): bool {
     const x = changetype<Kw>(a);
     const y = changetype<Kw>(b);
     return x.ns == y.ns && x.name == y.name;
+  }
+  if (a instanceof LazySeq || b instanceof LazySeq) {
+    if (!(a instanceof LazySeq || a instanceof Vec) || !(b instanceof LazySeq || b instanceof Vec)) return false;
+    let x = sq(a);
+    let y = sq(b);
+    while (x !== null && y !== null) {
+      if (!eq(x.h, y.h)) return false;
+      x = sq(x.t);
+      y = sq(y.t);
+    }
+    return x === null && y === null;
   }
   if (a instanceof Vec) {
     if (!(b instanceof Vec)) return false;
@@ -415,11 +432,13 @@ export function kcount(v: Value): Value {
   if (v instanceof MapV) return mkNum(<f64>changetype<MapV>(v).n);
   if (v instanceof SetV) return mkNum(<f64>changetype<SetV>(v).m.n);
   if (v instanceof Str) return mkNum(<f64>changetype<Str>(v).v.length);
+  if (v instanceof LazySeq) return mkNum(<f64>lazyItems(v).length);
   abort("count not supported on this value");
   return NIL;
 }
 
 export function kempty(v: Value): bool {
+  if (v instanceof LazySeq) return sq(v) === null;
   return toF64(kcount(v)) == 0;
 }
 
@@ -441,6 +460,7 @@ export function kconj(c: Value, x: Value): Value {
     a.push(x);
     return new Vec(a, v.n + 1, false);
   }
+  if (c instanceof LazySeq) return new ConsSeq(x, c);
   if (c instanceof SetV) return setAdd(changetype<SetV>(c), x);
   if (c instanceof MapV) {
     if (x instanceof Vec && changetype<Vec>(x).n == 2) {
@@ -472,6 +492,10 @@ export function knth3(c: Value, i: Value, dflt: Value, hasDefault: bool): Value 
   } else if (c instanceof Str) {
     const s = changetype<Str>(c).v;
     if (idx >= 0 && idx < s.length) return new Str(s.charAt(idx));
+  } else if (c instanceof LazySeq) {
+    let s = idx >= 0 ? sq(c) : null;
+    for (let k = idx; s !== null && k > 0; k--) s = sq(s.t);
+    if (s !== null) return s.h;
   } else if (c === NIL) {
     if (hasDefault) return dflt;
     return NIL;
@@ -592,12 +616,14 @@ export function kfirst(c: Value): Value {
     const v = changetype<Vec>(c);
     return v.n > 0 ? unchecked(v.a[0]) : NIL;
   }
-  const a = items(c);
-  return a.length > 0 ? a[0] : NIL;
+  const s = sq(c);
+  return s === null ? NIL : s.h;
 }
 export function ksecond(c: Value): Value {
-  const a = items(c);
-  return a.length > 1 ? a[1] : NIL;
+  const s = sq(c);
+  if (s === null) return NIL;
+  const s2 = sq(s.t);
+  return s2 === null ? NIL : s2.h;
 }
 export function klast(c: Value): Value {
   if (c instanceof Vec) {
@@ -614,12 +640,16 @@ export function kpeek(c: Value): Value {
 export function kpop(c: Value): Value {
   const v = asVec(c);
   if (v.n == 0) abort("Can't pop empty collection");
-  if (v.list) return krest(c);
+  if (v.list) return listOf(copyN(v.a, v.n).slice(1));
   return new Vec(v.a, v.n - 1, false);
 }
 
 export function kvec(c: Value): Value {
   if (c === NIL) return EMPTY_VEC;
+  if (!(c instanceof Vec)) {
+    const a = items(c);
+    return new Vec(copyN(a, a.length), a.length, false);
+  }
   const v = asVec(c);
   return new Vec(copyN(v.a, v.n), v.n, false);
 }
@@ -820,7 +850,7 @@ export function isList(v: Value): bool {
   return v instanceof Vec && changetype<Vec>(v).list;
 }
 export function isSeq(v: Value): bool {
-  return isList(v);
+  return isList(v) || v instanceof LazySeq;
 }
 
 /** Read-only element view of any seqable. Callers must capture `length` before looping. */
@@ -830,6 +860,7 @@ export function items(c: Value): Array<Value> {
     const v = changetype<Vec>(c);
     return v.n == v.a.length ? v.a : copyN(v.a, v.n);
   }
+  if (c instanceof LazySeq) return lazyItems(c);
   if (c instanceof MapV) {
     const m = changetype<MapV>(c);
     const out = new Array<Value>();
@@ -865,33 +896,33 @@ export function klist(args: Array<Value>): Value {
 }
 export function kseq(c: Value): Value {
   if (c === NIL) return NIL;
+  if (c instanceof LazySeq) {
+    const s = sq(c);
+    return s === null ? NIL : s;
+  }
   if (c instanceof Vec && changetype<Vec>(c).list) return changetype<Vec>(c).n > 0 ? c : NIL;
   const a = items(c);
   return a.length == 0 ? NIL : listOf(copyN(a, a.length));
 }
 export function krest(c: Value): Value {
-  const a = items(c);
-  const n = a.length;
-  const out = new Array<Value>();
-  for (let i = 1; i < n; i++) out.push(unchecked(a[i]));
-  return listOf(out);
+  const s = sq(c);
+  if (s === null || s.t === NIL) return listOf([]);
+  return s.t;
 }
 export function knext(c: Value): Value {
-  const r = krest(c);
-  return changetype<Vec>(r).n == 0 ? NIL : r;
+  const s = sq(c);
+  if (s === null) return NIL;
+  const s2 = sq(s.t);
+  return s2 === null ? NIL : s2;
 }
 export function kcons(x: Value, c: Value): Value {
-  const a = items(c);
-  const n = a.length;
-  const out = new Array<Value>();
-  out.push(x);
-  for (let i = 0; i < n; i++) out.push(unchecked(a[i]));
-  return listOf(out);
+  return new ConsSeq(x, c);
 }
 export function kemptyOf(c: Value): Value {
   if (c instanceof MapV) return EMPTY_MAP;
   if (c instanceof SetV) return EMPTY_SET;
   if (c instanceof Vec) return changetype<Vec>(c).list ? listOf([]) : EMPTY_VEC;
+  if (c instanceof LazySeq) return listOf([]);
   return NIL;
 }
 export function kreverse(c: Value): Value {
@@ -902,78 +933,56 @@ export function kreverse(c: Value): Value {
   return listOf(out);
 }
 export function kconcat(args: Array<Value>): Value {
-  const out = new Array<Value>();
-  for (let i = 0; i < args.length; i++) {
-    const a = items(args[i]);
-    const n = a.length;
-    for (let j = 0; j < n; j++) out.push(unchecked(a[j]));
-  }
-  return listOf(out);
+  if (args.length == 0) return listOf([]);
+  return new ConcatSeq(args[0], args, 1);
 }
 export function ktake(cnt: Value, c: Value): Value {
-  const a = items(c);
-  const k = min(<i32>toF64(cnt), a.length);
-  const out = new Array<Value>();
-  for (let i = 0; i < k; i++) out.push(unchecked(a[i]));
-  return listOf(out);
+  return new TakeSeq(<i32>toF64(cnt), c);
 }
 export function kdrop(cnt: Value, c: Value): Value {
-  const a = items(c);
-  const n = a.length;
-  const out = new Array<Value>();
-  for (let i = max(<i32>toF64(cnt), 0); i < n; i++) out.push(unchecked(a[i]));
-  return listOf(out);
+  return new DropSeq(<i32>toF64(cnt), c);
 }
 export function kmap2(f: Value, c: Value): Value {
+  return new MapSeq(f, c);
+}
+export function kmap3(f: Value, c1: Value, c2: Value): Value {
+  return new MapSeq2(f, c1, c2);
+}
+export function kmapv(f: Value, c: Value): Value {
   const a = items(c);
   const n = a.length;
   const out = new Array<Value>();
   for (let i = 0; i < n; i++) out.push(callV1(f, unchecked(a[i])));
-  return listOf(out);
-}
-export function kmap3(f: Value, c1: Value, c2: Value): Value {
-  const a = items(c1);
-  const b = items(c2);
-  const n = min(a.length, b.length);
-  const out = new Array<Value>();
-  for (let i = 0; i < n; i++) out.push(callV2(f, unchecked(a[i]), unchecked(b[i])));
-  return listOf(out);
-}
-export function kmapv(f: Value, c: Value): Value {
-  const r = changetype<Vec>(kmap2(f, c));
-  return new Vec(r.a, r.n, false);
+  return new Vec(out, out.length, false);
 }
 export function kfilter(f: Value, c: Value): Value {
+  return new FilterSeq(f, c, true);
+}
+export function kfilterv(f: Value, c: Value): Value {
   const a = items(c);
   const n = a.length;
   const out = new Array<Value>();
   for (let i = 0; i < n; i++) if (truthy(callV1(f, unchecked(a[i])))) out.push(unchecked(a[i]));
-  return listOf(out);
-}
-export function kfilterv(f: Value, c: Value): Value {
-  const r = changetype<Vec>(kfilter(f, c));
-  return new Vec(r.a, r.n, false);
+  return new Vec(out, out.length, false);
 }
 export function kremove(f: Value, c: Value): Value {
-  const a = items(c);
-  const n = a.length;
-  const out = new Array<Value>();
-  for (let i = 0; i < n; i++) if (!truthy(callV1(f, unchecked(a[i])))) out.push(unchecked(a[i]));
-  return listOf(out);
+  return new FilterSeq(f, c, false);
 }
 export function ksome(f: Value, c: Value): Value {
-  const a = items(c);
-  const n = a.length;
-  for (let i = 0; i < n; i++) {
-    const r = callV1(f, unchecked(a[i]));
+  let s = sq(c);
+  while (s !== null) {
+    const r = callV1(f, s.h);
     if (truthy(r)) return r;
+    s = sq(s.t);
   }
   return NIL;
 }
 export function kevery(f: Value, c: Value): bool {
-  const a = items(c);
-  const n = a.length;
-  for (let i = 0; i < n; i++) if (!truthy(callV1(f, unchecked(a[i])))) return false;
+  let s = sq(c);
+  while (s !== null) {
+    if (!truthy(callV1(f, s.h))) return false;
+    s = sq(s.t);
+  }
   return true;
 }
 export function kinto(to: Value, from: Value): Value {
@@ -983,12 +992,16 @@ export function kinto(to: Value, from: Value): Value {
   for (let i = 0; i < n; i++) r = kconj(r, unchecked(a[i]));
   return r;
 }
+// Ranges up to this many elements are materialized (indistinguishable from lazy: no side effects).
+const RANGE_EAGER_MAX: f64 = 65536;
 export function krange3(start: Value, end: Value, step: Value): Value {
   const s = toF64(start);
   const e = toF64(end);
   const st = toF64(step);
-  const out = new Array<Value>();
   if (st == 0) abort("range step must not be zero");
+  const cnt = Math.ceil((e - s) / st);
+  if (!(cnt <= RANGE_EAGER_MAX)) return new RangeSeq(s, e, st);
+  const out = new Array<Value>();
   if (st > 0) for (let x = s; x < e; x += st) out.push(mkNum(x));
   else for (let x = s; x > e; x += st) out.push(mkNum(x));
   return listOf(out);
@@ -1102,6 +1115,15 @@ export function toStr(v: Value, readable: bool): string {
     }
     return out + (x.list ? ")" : "]");
   }
+  if (v instanceof LazySeq) {
+    const a = lazyItems(v);
+    let out = "(";
+    for (let i = 0; i < a.length; i++) {
+      if (i > 0) out += " ";
+      out += elemStr(a[i], readable);
+    }
+    return out + ")";
+  }
   if (v instanceof MapV) {
     const m = changetype<MapV>(v);
     let out = "{";
@@ -1163,4 +1185,452 @@ export function str(args: Array<Value>): Value {
   let out = "";
   for (let i = 0; i < args.length; i++) out += toStr(args[i], false);
   return new Str(out);
+}
+
+// -- Lazy sequences ------------------------------------------------------------
+// A LazySeq is one cell of a seq: `compute()` runs at most once and fills `ne` (non-empty),
+// `h` (first) and `t` (rest, any seqable). Cells cache, so side effects run once per element.
+// Unlike Clojure there is no 32-element chunking: `map`/`filter` realize one element at a time.
+
+export abstract class LazySeq extends Value {
+  done: bool = false;
+  ne: bool = false;
+  h: Value = NIL;
+  t: Value = NIL;
+  abstract compute(): void;
+  force(): LazySeq {
+    if (!this.done) {
+      this.compute();
+      this.done = true;
+    }
+    return this;
+  }
+  cell(h: Value, t: Value): void {
+    this.ne = true;
+    this.h = h;
+    this.t = t;
+  }
+  fillFrom(c: Value): void {
+    const s = sq(c);
+    if (s === null) this.ne = false;
+    else this.cell(s.h, s.t);
+  }
+}
+
+/** The forced, non-empty cell for any seqable, or null when it is empty. */
+export function sq(c: Value): LazySeq | null {
+  if (c === NIL) return null;
+  if (c instanceof LazySeq) {
+    const l = changetype<LazySeq>(c).force();
+    return l.ne ? l : null;
+  }
+  if (c instanceof Vec) {
+    const v = changetype<Vec>(c);
+    if (v.n == 0) return null;
+    return new ArrSeq(v.a, 0, v.n).force();
+  }
+  const a = items(c);
+  if (a.length == 0) return null;
+  return new ArrSeq(a, 0, a.length).force();
+}
+
+class ArrSeq extends LazySeq {
+  constructor(
+    public a: Array<Value>,
+    public i: i32,
+    public n: i32,
+  ) {
+    super();
+  }
+  compute(): void {
+    this.cell(unchecked(this.a[this.i]), this.i + 1 < this.n ? new ArrSeq(this.a, this.i + 1, this.n) : NIL);
+  }
+}
+
+class ConsSeq extends LazySeq {
+  constructor(x: Value, rest: Value) {
+    super();
+    this.done = true;
+    this.cell(x, rest);
+  }
+  compute(): void {}
+}
+
+class ThunkSeq extends LazySeq {
+  constructor(public f: Value) {
+    super();
+  }
+  compute(): void {
+    this.fillFrom(callV0(this.f));
+  }
+}
+
+class MapSeq extends LazySeq {
+  constructor(
+    public f: Value,
+    public src: Value,
+  ) {
+    super();
+  }
+  compute(): void {
+    const s = sq(this.src);
+    if (s === null) return;
+    this.cell(callV1(this.f, s.h), new MapSeq(this.f, s.t));
+  }
+}
+
+class MapSeq2 extends LazySeq {
+  constructor(
+    public f: Value,
+    public a: Value,
+    public b: Value,
+  ) {
+    super();
+  }
+  compute(): void {
+    const x = sq(this.a);
+    if (x === null) return;
+    const y = sq(this.b);
+    if (y === null) return;
+    this.cell(callV2(this.f, x.h, y.h), new MapSeq2(this.f, x.t, y.t));
+  }
+}
+
+class FilterSeq extends LazySeq {
+  constructor(
+    public f: Value,
+    public src: Value,
+    public keep: bool,
+  ) {
+    super();
+  }
+  compute(): void {
+    let s = sq(this.src);
+    while (s !== null) {
+      if (truthy(callV1(this.f, s.h)) == this.keep) {
+        this.cell(s.h, new FilterSeq(this.f, s.t, this.keep));
+        return;
+      }
+      s = sq(s.t);
+    }
+  }
+}
+
+class TakeSeq extends LazySeq {
+  constructor(
+    public n: i32,
+    public src: Value,
+  ) {
+    super();
+  }
+  compute(): void {
+    if (this.n <= 0) return;
+    const s = sq(this.src);
+    if (s === null) return;
+    this.cell(s.h, this.n > 1 ? new TakeSeq(this.n - 1, s.t) : NIL);
+  }
+}
+
+class DropSeq extends LazySeq {
+  constructor(
+    public n: i32,
+    public src: Value,
+  ) {
+    super();
+  }
+  compute(): void {
+    let s = sq(this.src);
+    for (let i = this.n; s !== null && i > 0; i--) s = sq(s.t);
+    if (s !== null) this.cell(s.h, s.t);
+  }
+}
+
+class TakeWhileSeq extends LazySeq {
+  constructor(
+    public f: Value,
+    public src: Value,
+  ) {
+    super();
+  }
+  compute(): void {
+    const s = sq(this.src);
+    if (s === null || !truthy(callV1(this.f, s.h))) return;
+    this.cell(s.h, new TakeWhileSeq(this.f, s.t));
+  }
+}
+
+class DropWhileSeq extends LazySeq {
+  constructor(
+    public f: Value,
+    public src: Value,
+  ) {
+    super();
+  }
+  compute(): void {
+    let s = sq(this.src);
+    while (s !== null && truthy(callV1(this.f, s.h))) s = sq(s.t);
+    if (s !== null) this.cell(s.h, s.t);
+  }
+}
+
+class RangeSeq extends LazySeq {
+  constructor(
+    public cur: f64,
+    public end: f64,
+    public step: f64,
+  ) {
+    super();
+  }
+  compute(): void {
+    if (this.step > 0 ? this.cur >= this.end : this.cur <= this.end) return;
+    this.cell(mkNum(this.cur), new RangeSeq(this.cur + this.step, this.end, this.step));
+  }
+}
+
+class IterateSeq extends LazySeq {
+  constructor(
+    public f: Value,
+    public seed: Value,
+    public apply: bool,
+  ) {
+    super();
+  }
+  compute(): void {
+    const x = this.apply ? callV1(this.f, this.seed) : this.seed;
+    this.cell(x, new IterateSeq(this.f, x, true));
+  }
+}
+
+class RepeatSeq extends LazySeq {
+  constructor(
+    public x: Value,
+    public n: i32,
+  ) {
+    super();
+  }
+  compute(): void {
+    if (this.n == 0) return;
+    this.cell(this.x, this.n == 1 ? NIL : new RepeatSeq(this.x, this.n > 0 ? this.n - 1 : -1));
+  }
+}
+
+class CycleSeq extends LazySeq {
+  constructor(
+    public orig: Value,
+    public cur: Value,
+  ) {
+    super();
+  }
+  compute(): void {
+    let s = sq(this.cur);
+    if (s === null) s = sq(this.orig);
+    if (s === null) return;
+    this.cell(s.h, new CycleSeq(this.orig, s.t));
+  }
+}
+
+class ConcatSeq extends LazySeq {
+  constructor(
+    public cur: Value,
+    public rest: Array<Value>,
+    public i: i32,
+  ) {
+    super();
+  }
+  compute(): void {
+    let cur = this.cur;
+    let i = this.i;
+    for (;;) {
+      const s = sq(cur);
+      if (s !== null) {
+        this.cell(s.h, new ConcatSeq(s.t, this.rest, i));
+        return;
+      }
+      if (i >= this.rest.length) return;
+      cur = this.rest[i];
+      i++;
+    }
+  }
+}
+
+class FlatSeq extends LazySeq {
+  constructor(
+    public inner: Value,
+    public outer: Value,
+  ) {
+    super();
+  }
+  compute(): void {
+    let inner = this.inner;
+    let outer = this.outer;
+    for (;;) {
+      const s = sq(inner);
+      if (s !== null) {
+        this.cell(s.h, new FlatSeq(s.t, outer));
+        return;
+      }
+      const o = sq(outer);
+      if (o === null) return;
+      inner = o.h;
+      outer = o.t;
+    }
+  }
+}
+
+export function lazySeq(f: Value): Value {
+  return new ThunkSeq(f);
+}
+
+function lazyItems(c: Value): Array<Value> {
+  const out = new Array<Value>();
+  let s = sq(c);
+  while (s !== null) {
+    out.push(s.h);
+    s = sq(s.t);
+  }
+  return out;
+}
+
+export function kdoall(c: Value): Value {
+  let s = sq(c);
+  while (s !== null) s = sq(s.t);
+  return c;
+}
+export function kdorun(c: Value): Value {
+  kdoall(c);
+  return NIL;
+}
+
+export function kiterate(f: Value, x: Value): Value {
+  return new IterateSeq(f, x, false);
+}
+export function krepeat1(x: Value): Value {
+  return new RepeatSeq(x, -1);
+}
+export function krepeat2(n: Value, x: Value): Value {
+  const k = <i32>toF64(n);
+  return k <= 0 ? listOf([]) : new RepeatSeq(x, k);
+}
+export function kcycle(c: Value): Value {
+  return new CycleSeq(c, c);
+}
+export function ktakeWhile(f: Value, c: Value): Value {
+  return new TakeWhileSeq(f, c);
+}
+export function kdropWhile(f: Value, c: Value): Value {
+  return new DropWhileSeq(f, c);
+}
+export function kmapcat(f: Value, c: Value): Value {
+  return new FlatSeq(NIL, new MapSeq(f, c));
+}
+export function krange0(): Value {
+  return new RangeSeq(0, Infinity, 1);
+}
+
+// -- Comparison and sorting ----------------------------------------------------
+
+function typeRank(v: Value): i32 {
+  if (v instanceof Num) return 1;
+  if (v instanceof Str) return 2;
+  if (v instanceof Kw) return 3;
+  if (v === TRUE || v === FALSE) return 4;
+  if (v instanceof Vec) return 5;
+  return 0;
+}
+
+export function kcompareI(a: Value, b: Value): i32 {
+  if (a === b) return 0;
+  if (a === NIL) return -1;
+  if (b === NIL) return 1;
+  if (a instanceof Num && b instanceof Num) {
+    const x = changetype<Num>(a).v;
+    const y = changetype<Num>(b).v;
+    return x < y ? -1 : x > y ? 1 : 0;
+  }
+  if (a instanceof Str && b instanceof Str) {
+    const x = changetype<Str>(a).v;
+    const y = changetype<Str>(b).v;
+    return x < y ? -1 : x > y ? 1 : 0;
+  }
+  if (a instanceof Kw && b instanceof Kw) {
+    const x = changetype<Kw>(a);
+    const y = changetype<Kw>(b);
+    if (x.ns != y.ns) return x.ns < y.ns ? -1 : 1;
+    return x.name < y.name ? -1 : x.name > y.name ? 1 : 0;
+  }
+  if ((a === TRUE || a === FALSE) && (b === TRUE || b === FALSE)) return a === FALSE ? -1 : 1;
+  if (a instanceof Vec && b instanceof Vec) {
+    const x = changetype<Vec>(a);
+    const y = changetype<Vec>(b);
+    if (x.n != y.n) return x.n < y.n ? -1 : 1;
+    for (let i = 0; i < x.n; i++) {
+      const c = kcompareI(unchecked(x.a[i]), unchecked(y.a[i]));
+      if (c != 0) return c;
+    }
+    return 0;
+  }
+  if (typeRank(a) != typeRank(b) || typeRank(a) == 0) abort("Cannot compare these values");
+  return 0;
+}
+export function kcompare(a: Value, b: Value): Value {
+  return mkNum(<f64>kcompareI(a, b));
+}
+
+// Accepts a 3-way number comparator or a boolean "less than" predicate, like Clojure.
+function cmpWith(cmp: Value, a: Value, b: Value): i32 {
+  if (cmp === NIL) return kcompareI(a, b);
+  const r = callV2(cmp, a, b);
+  if (r === TRUE) return -1;
+  if (r === FALSE) return truthy(callV2(cmp, b, a)) ? 1 : 0;
+  const f = toF64(r);
+  return f < 0 ? -1 : f > 0 ? 1 : 0;
+}
+
+function msort(idx: Array<i32>, tmp: Array<i32>, lo: i32, hi: i32, keys: Array<Value>, cmp: Value): void {
+  if (hi - lo < 2) return;
+  const mid = (lo + hi) >> 1;
+  msort(idx, tmp, lo, mid, keys, cmp);
+  msort(idx, tmp, mid, hi, keys, cmp);
+  let i = lo;
+  let j = mid;
+  let k = lo;
+  while (i < mid && j < hi) {
+    if (cmpWith(cmp, keys[idx[j]], keys[idx[i]]) < 0) tmp[k++] = idx[j++];
+    else tmp[k++] = idx[i++];
+  }
+  while (i < mid) tmp[k++] = idx[i++];
+  while (j < hi) tmp[k++] = idx[j++];
+  for (k = lo; k < hi; k++) idx[k] = tmp[k];
+}
+
+function sortImpl(keyFn: Value, cmp: Value, c: Value): Value {
+  const vals = lazyOrItems(c);
+  const n = vals.length;
+  let keys = vals;
+  if (keyFn !== NIL) {
+    keys = new Array<Value>();
+    for (let i = 0; i < n; i++) keys.push(callV1(keyFn, vals[i]));
+  }
+  const idx = new Array<i32>(n);
+  const tmp = new Array<i32>(n);
+  for (let i = 0; i < n; i++) idx[i] = i;
+  msort(idx, tmp, 0, n, keys, cmp);
+  const out = new Array<Value>();
+  for (let i = 0; i < n; i++) out.push(vals[idx[i]]);
+  return listOf(out);
+}
+function lazyOrItems(c: Value): Array<Value> {
+  return items(c);
+}
+export function ksort1(c: Value): Value {
+  return sortImpl(NIL, NIL, c);
+}
+export function ksort2(cmp: Value, c: Value): Value {
+  return sortImpl(NIL, cmp, c);
+}
+export function ksortBy2(kf: Value, c: Value): Value {
+  return sortImpl(kf, NIL, c);
+}
+export function ksortBy3(kf: Value, cmp: Value, c: Value): Value {
+  return sortImpl(kf, cmp, c);
 }

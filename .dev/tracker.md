@@ -419,6 +419,13 @@ bindings (string values only), no fs, `host/exit` -> 500. (5) `host/json-parse` 
 **Decision**: (1) Reader conditionals (`#?`, `#?@`) implemented (previously unsupported); enabled for `.cljc` on JS (`['cljs']`) and always on the AS target (`['as','cljs']`). Branch chosen by **feature priority**, not source order, then `:default`; so `:as` beats `:cljs` regardless of position. (2) AS `(:require [ns :as a :refer [...]])` for project-local namespaces is linked by **inlining** deps (dependency order) into the one flat module and rewriting `a/x`, `ns/x` to bare `x` (`src/codegen-as/modules.ts`); duplicate top-level names across namespaces are a compile error; unsupported options (`:only`, `:rename`) and missing namespaces error. CLI resolves `a.b/c.{cljc,cljs}` from the entry dir, its ancestors and their `src/`. (3) `kiso serve <file> [--handler] [--port]` runs the same `createWorker` adapter on node:http for local dev. (4) `.cljc` now accepted by `kiso compile` discovery and `kiso build` naming. (5) `examples/fullstack`: shared `app.shared` (.cljc) used by wasm API and JS client; contract = JSON request/response maps (D24).
 **Limits**: no name-spacing of flattened modules (collision = error), no `:refer :all`, no CLJS-only macros in AS, `host/fetch` still deferred, shared code must stay in the AS-supported subset (no lazy seq / try).
 
+### D26: AS lazy seqs, `for`, `sort`
+
+**Date**: 2026-11-06
+
+**Decision**: (1) True lazy sequences on AS: `lazy-seq`, `map`/`filter`/`remove`/`take`/`drop`/`take-while`/`drop-while`/`mapcat`/`concat`/`cons`/`iterate`/`repeat`/`cycle`/`range` (0-arity = infinite); cells cache, so side effects run once. No closures in AS, so each op is a `LazySeq` subclass with `compute()`. `some`/`every?`/`first`/`rest`/`next`/`take` stream, so infinite seqs work; `count`/`reduce`/`into`/`vec`/`apply`/printing/JSON realize. `doall`/`dorun` added. (2) `for` is lazy on AS via an AS-only macro override (`setMacroTarget('as')`; JS expansion unchanged), built from `mapcat`/`map`/`filter`/`take-while`; `:when`/`:let` anywhere, `:while` only directly after a binding. (3) `sort`/`sort-by`/`compare`: stable merge sort; comparator may be 3-way number or boolean predicate; compare orders nil < numbers/strings/keywords/booleans/vectors, aborts on mixed types.
+**Limits / deviations**: no 32-element chunking (elements realize one at a time); `rest`/`next` return lazy cells so `(list? (rest xs))` is false; `try`/`catch` stays a compile error (asc 0.28 has no exception handling, AS100); `throw` aborts and the host surfaces an Error; compile-time chain fusion not done.
+
 ## Known Issues
 
 All previously tracked issues (I1–I6) have been resolved. See `archive/bugs-fixed.md` for details.

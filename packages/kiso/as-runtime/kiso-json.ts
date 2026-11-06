@@ -1,6 +1,6 @@
 // JSON <-> Value (D24). Objects become maps with keyword keys, arrays vectors, null nil.
 import {
-  Value, Num, Str, Kw, Vec, MapV, SetV, Rec, NIL, TRUE, FALSE, mkNum, mkVec, mkMap, fmtNum, toStr,
+  Value, Num, Str, Kw, Vec, MapV, SetV, Rec, NIL, TRUE, FALSE, mkNum, mkVec, mkMap, fmtNum, toStr, LazySeq, items,
 } from "./kiso-runtime";
 
 class Parser {
@@ -180,6 +180,14 @@ function write(v: Value, out: Array<string>): void {
     for (let i = 0; i < x.n; i++) {
       if (i > 0) out.push(",");
       write(unchecked(x.a[i]), out);
+    }
+    out.push("]");
+  } else if (v instanceof LazySeq) {
+    const a = items(v);
+    out.push("[");
+    for (let i = 0; i < a.length; i++) {
+      if (i > 0) out.push(",");
+      write(a[i], out);
     }
     out.push("]");
   } else if (v instanceof SetV) {
