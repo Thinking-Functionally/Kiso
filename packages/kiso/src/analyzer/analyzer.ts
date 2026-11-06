@@ -5,6 +5,7 @@
 import { type Form } from '../reader/form.js';
 import { expandAll, currentMacroTarget } from './macros.js';
 import { expandBinding } from './destructure.js';
+import { goTransform } from './go.js';
 import type {
   Node, LetBinding, FnArity, LiteralNode, DefNode, CaseClause,
   ProtocolImplNode, ProtocolMethodNode,
@@ -201,6 +202,10 @@ export class Analyzer {
     if (body.length === 1) return body[0]!;
     const ret = body.pop()!;
     return { type: 'do', statements: body, ret };
+  }
+
+  private analyzeGo(items: Form[], scope: Scope): Node {
+    return goTransform(this.analyzeDo(items, scope));
   }
 
   private analyzeLet(items: Form[], scope: Scope): Node {
@@ -696,6 +701,7 @@ const SPECIAL_FORMS = new Map<string, (this: Analyzer, items: Form[], scope: Sco
   ['.', Analyzer.prototype['analyzeDot']],
   ['fn*', Analyzer.prototype['analyzeFn']],
   ['loop*', Analyzer.prototype['analyzeLoop']],
+  ['go*', Analyzer.prototype['analyzeGo']],
   ['recur', Analyzer.prototype['analyzeRecur']],
   ['quote', Analyzer.prototype['analyzeQuote']],
   ['throw', Analyzer.prototype['analyzeThrow']],

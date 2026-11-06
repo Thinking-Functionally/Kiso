@@ -24,6 +24,13 @@ let macroTarget: 'js' | 'as' = 'js';
 // Opt-in clojure.test subset (deftest/is/testing/are); see test-macros.ts.
 export const TEST_MACROS = new Map<string, MacroFn>();
 let testMacrosOn = false;
+// go/go-loop; enabled per compile by resolveAsyncNs when clojure.core.async is required.
+const ASYNC_MACROS = new Map<string, MacroFn>();
+let asyncMacrosOn = false;
+
+export function setAsyncMacros(on: boolean): void {
+  asyncMacrosOn = on;
+}
 
 export function setTestMacros(on: boolean): void {
   testMacrosOn = on;
@@ -56,7 +63,7 @@ export function expandOnce(form: Form): Form {
   if (items.length === 0) return form;
   const head = items[0]!;
   if (head.data.type !== 'symbol' || head.data.ns !== null) return form;
-  const macroFn = (testMacrosOn ? TEST_MACROS.get(head.data.name) : undefined) ?? (macroTarget === 'as' ? AS_MACROS.get(head.data.name) : undefined) ?? MACROS.get(head.data.name);
+  const macroFn = (asyncMacrosOn ? ASYNC_MACROS.get(head.data.name) : undefined) ?? (testMacrosOn ? TEST_MACROS.get(head.data.name) : undefined) ?? (macroTarget === 'as' ? AS_MACROS.get(head.data.name) : undefined) ?? MACROS.get(head.data.name);
   if (!macroFn) return form;
   return macroFn(items, form);
 }
@@ -970,6 +977,13 @@ defmacro('defmethod', (items, form) => {
     sym('.'), name, sym('addMethod'), dispatchVal, fnForm,
   ], ...loc(form));
 });
+
+// go/go-loop are opt-in (like TEST_MACROS): active only when the ns requires clojure.core.async,
+// so user code may still define its own `go`.
+ASYNC_MACROS.set('go', (items, form) => makeList([sym('go*'), ...items.slice(1)], ...loc(form)));
+
+ASYNC_MACROS.set('go-loop', (items, form) =>
+  makeList([sym('go*'), makeList([sym('loop'), ...items.slice(1)], ...loc(form))], ...loc(form)));
 
 defmacro('dotimes', (items, form) => {
   // (dotimes [i n] body...) → (let* [dt__limit n] (loop* [dt__i 0] (if (js* "dt__i < dt__limit") (let* [i dt__i] (do body... (recur (js* "dt__i + 1")))) nil)))

@@ -3,6 +3,7 @@
 // Single-entry-point for compiling ClojureScript to JavaScript.
 
 import { setMacroTarget, setTestMacros } from '../analyzer/macros.js';
+import { resolveAsyncNs } from '../analyzer/async-ns.js';
 import { expandUserMacros } from '../analyzer/macro-expander.js';
 import '../analyzer/test-macros.js';
 import { linkModules, topLevelNames, type NsLoader } from '../codegen-as/modules.js';
@@ -102,7 +103,7 @@ export function compile(source: string, options?: CompileOptions): CompileResult
   try {
     const isCljc = filename?.endsWith('.cljc') ?? false;
     const features = options?.features ?? (options?.target === 'as' ? ['as', 'cljs'] : isCljc ? ['cljs'] : null);
-    forms = readAllStr(source, features);
+    forms = resolveAsyncNs(readAllStr(source, features));
     if (options?.loadNs || options?.target === 'as') forms = linkModules(forms, options.loadNs ?? (() => null), features ?? [], options.target !== 'as');
     setMacroTarget(options?.target === 'as' ? 'as' : 'js');
     setTestMacros(options?.testMacros === true);

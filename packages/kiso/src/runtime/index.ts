@@ -100,3 +100,4 @@ export { transient, persistent_m, conj_m, assoc_m, dissoc_m, disj_m } from './tr
 export * from './extras.js';
 export { LazySeq } from './lazy-seq.js';
 export { read_string } from './edn.js';
+export { chan, buffer, dropping_buffer, sliding_buffer, take_m, put_m, close_m, offer_m, timeout, go_start, go_dispatch, go_alts } from './async.js';

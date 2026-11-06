@@ -768,6 +768,7 @@ function nsToPath(currentNs: string, targetNs: string): string {
 // -- Runtime Import Collection --
 
 const RUNTIME_FUNCTIONS = new Set([
+  'chan', 'buffer', 'dropping-buffer', 'sliding-buffer', 'take!', 'put!', 'close!', 'offer!', 'timeout', 'go-start', 'go-dispatch', 'go-alts',
   'atom', 'deref', 'reset!', 'swap!', 'isAtom',
   'cons', 'first', 'rest', 'count', 'list', 'seq', 'next',
   'conj', 'get', 'assoc', 'dissoc', 'into', 'concat',
