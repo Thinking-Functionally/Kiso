@@ -197,6 +197,7 @@ export function isNeg(a: Value): bool {
 // MapV: insertion-ordered array map with a lazily built open-addressing index (n > 8).
 
 export class Vec extends Value {
+  meta: Value = NIL;
   constructor(
     public a: Array<Value>,
     public n: i32,
@@ -209,6 +210,7 @@ export class Vec extends Value {
 const INDEX_MIN: i32 = 8;
 
 export class MapV extends Value {
+  meta: Value = NIL;
   constructor(
     public keys: Array<Value>,
     public vals: Array<Value>,
@@ -216,6 +218,13 @@ export class MapV extends Value {
     public idx: Int32Array | null,
   ) {
     super();
+  }
+}
+
+// Sorted map: entries are kept ordered by `cmp` (NIL = natural order); a sorted set is a SetV over one.
+export class SortedMapV extends MapV {
+  constructor(keys: Array<Value>, vals: Array<Value>, n: i32, public cmp: Value) {
+    super(keys, vals, n, null);
   }
 }
 
@@ -368,6 +377,11 @@ function buildIndex(keys: Array<Value>, n: i32): Int32Array {
 
 function mapFind(m: MapV, k: Value): i32 {
   const n = m.n;
+  if (m instanceof SortedMapV) {
+    const sm = changetype<SortedMapV>(m);
+    const pos = sortedPos(sm, k);
+    return pos < n && cmpWith(sm.cmp, unchecked(sm.keys[pos]), k) == 0 ? pos : -1;
+  }
   if (n <= INDEX_MIN) {
     for (let i = 0; i < n; i++) if (eq(unchecked(m.keys[i]), k)) return i;
     return -1;
@@ -395,7 +409,38 @@ export function copyN(a: Array<Value>, n: i32): Array<Value> {
   return out;
 }
 
+function sortedPos(m: SortedMapV, k: Value): i32 {
+  let lo = 0;
+  let hi = m.n;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (cmpWith(m.cmp, unchecked(m.keys[mid]), k) < 0) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
+
+function sortedAssoc(m: SortedMapV, k: Value, v: Value): MapV {
+  const pos = sortedPos(m, k);
+  const keys = copyN(m.keys, m.n);
+  const vals = copyN(m.vals, m.n);
+  if (pos < m.n && cmpWith(m.cmp, unchecked(m.keys[pos]), k) == 0) {
+    vals[pos] = v;
+  } else {
+    keys.push(k);
+    vals.push(v);
+    for (let i = keys.length - 1; i > pos; i--) {
+      keys[i] = keys[i - 1];
+      vals[i] = vals[i - 1];
+    }
+    keys[pos] = k;
+    vals[pos] = v;
+  }
+  return new SortedMapV(keys, vals, keys.length, m.cmp);
+}
+
 export function mapAssoc(m: MapV, k: Value, v: Value): MapV {
+  if (m instanceof SortedMapV) return sortedAssoc(changetype<SortedMapV>(m), k, v);
   const j = mapFind(m, k);
   if (j >= 0) {
     const vals = copyN(m.vals, m.n);
@@ -603,6 +648,7 @@ export function kdissoc(c: Value, k: Value): Value {
     keys.push(unchecked(m.keys[i]));
     vals.push(unchecked(m.vals[i]));
   }
+  if (m instanceof SortedMapV) return new SortedMapV(keys, vals, keys.length, changetype<SortedMapV>(m).cmp);
   return new MapV(keys, vals, keys.length, null);
 }
 
@@ -847,6 +893,7 @@ export function noImpl(protocol: string, method: string, v: Value): Value {
 // -- Sets, lists/seqs, higher-order functions (D21) ----------------------------
 
 export class SetV extends Value {
+  meta: Value = NIL;
   constructor(public m: MapV) {
     super();
   }
@@ -2059,6 +2106,7 @@ export function kdisjBang(t: Value, k: Value): Value {
   return t;
 }
 export class Atom extends Value {
+  meta: Value = NIL;
   constructor(public v: Value) {
     super();
   }
@@ -2260,5 +2308,135 @@ export function kcmpN(op: i32, args: Array<Value>): bool {
     if (!ok) return false;
   }
   if (args.length == 1) toF64(args[0]);
+  return true;
+}
+
+// -- sorted collections, metadata, identity ------------------------------------
+
+export function sortedMapBy(cmp: Value, kv: Array<Value>): Value {
+  if (kv.length % 2 != 0) abort("sorted-map requires an even number of arguments");
+  let m: MapV = new SortedMapV([], [], 0, cmp);
+  for (let i = 0; i + 1 < kv.length; i += 2) m = mapAssoc(m, kv[i], kv[i + 1]);
+  return m;
+}
+export function sortedMap(kv: Array<Value>): Value {
+  return sortedMapBy(NIL, kv);
+}
+export function sortedSetBy(cmp: Value, xs: Array<Value>): Value {
+  let m: MapV = new SortedMapV([], [], 0, cmp);
+  for (let i = 0; i < xs.length; i++) m = mapAssoc(m, xs[i], TRUE);
+  return new SetV(m);
+}
+export function sortedSet(xs: Array<Value>): Value {
+  return sortedSetBy(NIL, xs);
+}
+export function ksortedMapEmptyBy(cmp: Value): Value {
+  return sortedMapBy(cmp, []);
+}
+export function ksortedSetEmptyBy(cmp: Value): Value {
+  return sortedSetBy(cmp, []);
+}
+function sortedBase(c: Value): SortedMapV | null {
+  if (c instanceof SortedMapV) return changetype<SortedMapV>(c);
+  if (c instanceof SetV && changetype<SetV>(c).m instanceof SortedMapV) return changetype<SortedMapV>(changetype<SetV>(c).m);
+  return null;
+}
+export function isSortedMap(c: Value): bool {
+  return c instanceof SortedMapV;
+}
+export function isSortedSet(c: Value): bool {
+  return c instanceof SetV && changetype<SetV>(c).m instanceof SortedMapV;
+}
+export function isSorted(c: Value): bool {
+  return sortedBase(c) !== null;
+}
+
+function subseqImpl(sc: Value, t1: Value, k1: Value, t2: Value, k2: Value, rev: bool): Value {
+  const b = sortedBase(sc);
+  if (b === null) {
+    abort("subseq requires a sorted collection");
+    return NIL;
+  }
+  const all = items(sc);
+  const out = new Array<Value>();
+  for (let i = 0; i < b.n; i++) {
+    const ek = unchecked(b.keys[i]);
+    if (!truthy(callV2(t1, mkNum(<f64>cmpWith(b.cmp, ek, k1)), mkNum(0)))) continue;
+    if (t2 !== NIL && !truthy(callV2(t2, mkNum(<f64>cmpWith(b.cmp, ek, k2)), mkNum(0)))) continue;
+    out.push(unchecked(all[i]));
+  }
+  if (rev) out.reverse();
+  return out.length == 0 ? NIL : listOf(out);
+}
+export function ksubseq3(sc: Value, t: Value, k: Value): Value {
+  return subseqImpl(sc, t, k, NIL, NIL, false);
+}
+export function ksubseq5(sc: Value, t1: Value, k1: Value, t2: Value, k2: Value): Value {
+  return subseqImpl(sc, t1, k1, t2, k2, false);
+}
+export function krsubseq3(sc: Value, t: Value, k: Value): Value {
+  return subseqImpl(sc, t, k, NIL, NIL, true);
+}
+export function krsubseq5(sc: Value, t1: Value, k1: Value, t2: Value, k2: Value): Value {
+  return subseqImpl(sc, t1, k1, t2, k2, true);
+}
+
+export function kmeta(v: Value): Value {
+  if (v instanceof SortedMapV) return changetype<SortedMapV>(v).meta;
+  if (v instanceof Vec) return changetype<Vec>(v).meta;
+  if (v instanceof MapV) return changetype<MapV>(v).meta;
+  if (v instanceof SetV) return changetype<SetV>(v).meta;
+  if (v instanceof Atom) return changetype<Atom>(v).meta;
+  return NIL;
+}
+// Metadata is kept on the value it was attached to; operations that build a new collection do not carry it over.
+export function kwithMeta(v: Value, m: Value): Value {
+  if (v instanceof SortedMapV) {
+    const o = changetype<SortedMapV>(v);
+    const r = new SortedMapV(o.keys, o.vals, o.n, o.cmp);
+    r.meta = m;
+    return r;
+  }
+  if (v instanceof Vec) {
+    const o = changetype<Vec>(v);
+    const r = new Vec(o.a, o.n, o.list);
+    r.meta = m;
+    return r;
+  }
+  if (v instanceof MapV) {
+    const o = changetype<MapV>(v);
+    const r = new MapV(o.keys, o.vals, o.n, o.idx);
+    r.meta = m;
+    return r;
+  }
+  if (v instanceof SetV) {
+    const r = new SetV(changetype<SetV>(v).m);
+    r.meta = m;
+    return r;
+  }
+  abort("with-meta is not supported on this value");
+  return NIL;
+}
+export function kresetMeta(a: Value, m: Value): Value {
+  if (a instanceof Atom) {
+    changetype<Atom>(a).meta = m;
+    return m;
+  }
+  abort("reset-meta! is only supported on atoms");
+  return NIL;
+}
+
+export function kidentical(a: Value, b: Value): bool {
+  if (a === b) return true;
+  if (a instanceof Num && b instanceof Num) return changetype<Num>(a).v == changetype<Num>(b).v;
+  if (a instanceof Str && b instanceof Str) return changetype<Str>(a).v == changetype<Str>(b).v;
+  if (a instanceof Kw && b instanceof Kw) return eq(a, b);
+  return false;
+}
+export function khash(v: Value): Value {
+  return mkNum(<f64>hashOf(v));
+}
+export function krealized(v: Value): bool {
+  if (v instanceof LazySeq) return changetype<LazySeq>(v).done;
   return true;
 }

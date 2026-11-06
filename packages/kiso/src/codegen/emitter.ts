@@ -538,6 +538,7 @@ function emitDefrecord(node: DefrecordNode, ctx: EmitCtx): string {
   const ctorBody = fields.map((f) => `${i2}this.${f} = ${f};`).join('\n');
   const typeAssign = `${i2}this.__kiso_type = "${name}";`;
   const members: string[] = [];
+  members.push(`${i}static __kiso_fields = [${node.fields.map((f) => JSON.stringify(f)).join(', ')}];`);
   members.push(`${i}constructor(${ctorParams}) {\n${ctorBody}\n${typeAssign}\n${i}}`);
   for (const impl of node.protocols) {
     const protoVar = emitNode(impl.protocol, ctx);
@@ -849,7 +850,7 @@ const RUNTIME_FUNCTIONS = new Set([
   'satisfies?', 'implements?',
   // Sorted collections
   'sorted-map', 'sorted-set',
-  'sorted-map-by', 'subseq', 'rsubseq',
+  'sorted-map-by', 'sorted-set-by', 'sorted-map?', 'sorted-set?', 'comparator', 'subseq', 'rsubseq',
   // Transient collections
   'transient', 'persistent!', 'conj!', 'assoc!', 'dissoc!', 'disj!',
   // Metadata

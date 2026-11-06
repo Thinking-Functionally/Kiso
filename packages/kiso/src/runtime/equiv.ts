@@ -56,6 +56,8 @@ function seqEquiv(a: unknown, b: unknown): boolean {
 }
 
 /** Clojure structural equality. */
+import { isRecord, recordEquiv } from './record.js';
+
 export function equiv(a: unknown, b: unknown): boolean {
   // null/undefined
   if (a == null && b == null) return true;
@@ -106,6 +108,8 @@ export function equiv(a: unknown, b: unknown): boolean {
     }
     return true;
   }
+
+  if (isRecord(a)) return recordEquiv(a, b, equiv);
 
   // Keywords (interned by name+ns, but different instances may exist in test contexts)
   if (typeof ao._tag === 'symbol' && typeof bo._tag === 'symbol'

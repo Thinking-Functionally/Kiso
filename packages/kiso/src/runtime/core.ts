@@ -9,9 +9,10 @@ import { setStructuralHooks } from './hash-map.js';
 import { isHashMap, PersistentHashMap, hashMap as hm } from './hash-map.js';
 import { isArrayMap } from './array-map.js';
 import { isHashSet, PersistentHashSet, hashSet } from './hash-set.js';
-import { isKeyword, type Keyword } from './keyword.js';
+import { isKeyword, setKeywordLookup, type Keyword } from './keyword.js';
 import { isSymbol, type Sym } from './symbol.js';
 import { equiv } from './equiv.js';
+import { isRecord, recordGet, recordHas, recordAssoc } from './record.js';
 import { LazySeq } from './lazy-seq.js';
 import { seq, first as seqFirst, next as seqNext, IndexedSeq } from './seq.js';
 import { isSortedMap, PersistentTreeMap, EMPTY_SORTED_MAP } from './sorted-map.js';
@@ -194,8 +195,14 @@ export function get(coll: unknown, key: unknown, notFound?: unknown): unknown {
   if (isSortedSet(coll)) {
     return (coll as PersistentTreeSet).has(key) ? key : defaultVal;
   }
+  if (isRecord(coll)) {
+    const v = recordGet(coll, key);
+    return v !== undefined ? v : defaultVal;
+  }
   return defaultVal;
 }
+
+setKeywordLookup((coll, key, notFound) => get(coll, key, notFound));
 
 export function contains_p(coll: unknown, key: unknown): boolean {
   if (coll === null || coll === undefined) return false;
@@ -206,6 +213,7 @@ export function contains_p(coll: unknown, key: unknown): boolean {
   }
   if (isSortedMap(coll)) return (coll as PersistentTreeMap).get(key) !== undefined;
   if (isSortedSet(coll)) return (coll as PersistentTreeSet).has(key);
+  if (isRecord(coll)) return recordHas(coll, key);
   return false;
 }
 
@@ -226,6 +234,7 @@ export function assoc(coll: unknown, key: unknown, val: unknown): unknown {
   if (isSortedMap(coll)) {
     return (coll as PersistentTreeMap).assoc(key, val);
   }
+  if (isRecord(coll)) return recordAssoc(coll, key, val);
   throw new Error('assoc not supported on this type');
 }
 
@@ -1264,7 +1273,18 @@ export function sorted_map_by(cmp: (a: unknown, b: unknown) => unknown, ...kvs: 
   return m;
 }
 
+export function sorted_set_by(cmp: (a: unknown, b: unknown) => unknown, ...xs: unknown[]): PersistentTreeSet {
+  let s = new PersistentTreeSet(new PersistentTreeMap(null, 0, asComparator(cmp)));
+  for (const x of xs) s = s.conj(x);
+  return s;
+}
+
 function sortedEntries(sc: unknown, tests: [Function, unknown][]): unknown[] {
+  if (isSortedSet(sc)) {
+    const set = sc as PersistentTreeSet;
+    const cmp = set.comparator();
+    return set.keys().filter((k) => tests.every(([t, key]) => t(cmp(k, key), 0)));
+  }
   if (!isSortedMap(sc)) return [];
   const m = sc as PersistentTreeMap;
   const cmp = m.comparator();
@@ -1442,13 +1462,16 @@ export function sorted_p(x: unknown): boolean {
 
 // -- Protocol predicates --
 
-export function satisfies_p(_protocol: unknown, _x: unknown): boolean {
-  // Placeholder: our protocols use defprotocol/extend-type which is structural
-  return false;
+// Protocol methods live under per-protocol Symbols on prototypes (extend-type, deftype, defrecord).
+export function satisfies_p(protocol: unknown, x: unknown): boolean {
+  const methods = (protocol as { methods?: Record<string, symbol> } | null)?.methods;
+  if (!methods || x == null) return false;
+  const target = Object(x) as Record<symbol, unknown>;
+  return Object.values(methods).some((sym) => typeof target[sym] === 'function');
 }
 
-export function implements_p(_protocol: unknown, _x: unknown): boolean {
-  return false;
+export function implements_p(protocol: unknown, x: unknown): boolean {
+  return satisfies_p(protocol, x);
 }
 
 // -- Dynamic vars (print system) --

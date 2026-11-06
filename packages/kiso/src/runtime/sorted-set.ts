@@ -31,6 +31,14 @@ export class PersistentTreeSet {
     return new PersistentTreeSet(newImpl);
   }
 
+  comparator(): (a: unknown, b: unknown) => number {
+    return this.impl.comparator();
+  }
+
+  keys(): unknown[] {
+    return this.impl.keys();
+  }
+
   forEach(fn: (key: unknown) => void): void {
     this.impl.forEach((key) => fn(key));
   }

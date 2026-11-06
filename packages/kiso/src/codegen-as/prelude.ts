@@ -156,7 +156,20 @@ const PRELUDE = `
 (defn ifn? [x] (or (fn? x) (keyword? x) (symbol? x) (map? x) (set? x) (vector? x)))
 (defn counted? [x] (or (vector? x) (map? x) (set? x) (list? x)))
 (defn reversible? [x] (vector? x))
-(defn sorted? [x] false)
+(defn comparator [pred] (fn [a b] (cond (pred a b) -1 (pred b a) 1 :else 0)))
+(defn rand ([] (/ (rand-int 1073741824) 1073741824)) ([n] (* n (rand))))
+(defn distinct? [& xs] (= (count xs) (count (set xs))))
+(defn sequence
+  ([coll] (or (seq coll) ()))
+  ([xf coll] (or (seq (into [] xf coll)) ())))
+(defn rseq [v] (seq (reverse v)))
+(defn bit-not [x] (- -1 x))
+(defn vary-meta [obj f & args] (with-meta obj (apply f (meta obj) args)))
+(defn alter-meta! [a f & args] (reset-meta! a (apply f (meta a) args)))
+(defn sorted-map-by [cmp & kvs]
+  (reduce (fn [m p] (assoc m (first p) (second p))) (sorted-map-empty-by cmp) (partition 2 kvs)))
+(defn sorted-set-by [cmp & xs]
+  (reduce conj (sorted-set-empty-by cmp) xs))
 (defn prn-str [& xs] (str (apply pr-str xs) "\n"))
 (defn println-str [& xs] (str (apply print-str xs) "\n"))
 (defn merge-with [f & maps]
@@ -285,5 +298,6 @@ export function injectPrelude(forms: Form[], defined: Set<string>): Form[] {
   if (need.length === 0) return forms;
   const nsIdx = forms.findIndex((f) => f.data.type === 'list' && symName((f.data.items as Form[])[0]!) === 'ns');
   const pre = need.map((n) => parsed!.get(n)!);
-  return nsIdx >= 0 ? [...forms.slice(0, nsIdx + 1), ...pre, ...forms.slice(nsIdx + 1)] : [...pre, ...forms];
+  // Linked library forms precede the main ns; the prelude must come before all of them.
+  return nsIdx === 0 ? [...forms.slice(0, 1), ...pre, ...forms.slice(1)] : [...pre, ...forms];
 }

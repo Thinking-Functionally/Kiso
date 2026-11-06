@@ -1,6 +1,6 @@
 // Additional clojure.core functions (kept apart from core.ts); exported through the runtime barrel.
 
-import { seq, toArray } from './seq.js';
+import { seq, toArray, into } from './seq.js';
 import { vector, isVector } from './vector.js';
 import { isList, list } from './list.js';
 import { hashMap, isHashMap } from './hash-map.js';
@@ -83,8 +83,9 @@ export function split_with(pred: unknown, coll: unknown): unknown {
   return vector(take_while(pred, coll), drop_while(pred, coll));
 }
 
-export function sequence(coll: unknown): unknown {
-  return seq(coll as never) ?? list();
+export function sequence(xformOrColl: unknown, coll?: unknown): unknown {
+  if (coll === undefined) return seq(xformOrColl as never) ?? list();
+  return seq(into(vector(), xformOrColl, coll) as never) ?? list();
 }
 
 export function rseq(coll: unknown): unknown {

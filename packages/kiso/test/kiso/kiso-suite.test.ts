@@ -23,7 +23,11 @@ for (const file of readdirSync(DIR).filter((f) => f.endsWith('_test.cljs'))) {
   describe(file, () => {
     for (const target of targets) {
       it(`passes every assertion on ${target}`, async () => {
-        const calls = names.map((n) => `(${n})`).join(' ');
+        const each = /\(use-fixtures\s+:each\s+([^\s()]+)\)/.exec(src)?.[1];
+        const once = /\(use-fixtures\s+:once\s+([^\s()]+)\)/.exec(src)?.[1];
+        const call = (n: string) => (each ? `(${each} (fn [] (${n})))` : `(${n})`);
+        const all = names.map(call).join(' ');
+        const calls = once ? `(${once} (fn [] ${all}))` : all;
         const program = `${src}\n(defn -main [] ${calls})\n${target === 'js' ? '(-main)\n' : ''}`;
         const out = target === 'js' ? await runJsAsync(program, loadNs) : await runAs(program, loadNs);
         let current = '?';

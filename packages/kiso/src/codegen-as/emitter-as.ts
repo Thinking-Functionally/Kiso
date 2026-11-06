@@ -136,6 +136,19 @@ const CORE_OPS: Record<string, CoreOp> = {
   'boolean': { kind: 'bool', fn: 'kboolean', arity: 1 },
   'integer?': { kind: 'bool', fn: 'isInteger', arity: 1 },
   'float?': { kind: 'bool', fn: 'isFloat', arity: 1 },
+  'sorted-map?': { kind: 'bool', fn: 'isSortedMap', arity: 1 },
+  'sorted-set?': { kind: 'bool', fn: 'isSortedSet', arity: 1 },
+  'sorted?': { kind: 'bool', fn: 'isSorted', arity: 1 },
+  'identical?': { kind: 'bool', fn: 'kidentical', arity: 2 },
+  'realized?': { kind: 'bool', fn: 'krealized', arity: 1 },
+  'hash': { kind: 'value', fn: 'khash', arity: 1 },
+  'meta': { kind: 'value', fn: 'kmeta', arity: 1 },
+  'with-meta': { kind: 'value', fn: 'kwithMeta', arity: 2 },
+  'reset-meta!': { kind: 'value', fn: 'kresetMeta', arity: 2 },
+  'sorted-map-empty-by': { kind: 'value', fn: 'ksortedMapEmptyBy', arity: 1 },
+  'sorted-set-empty-by': { kind: 'value', fn: 'ksortedSetEmptyBy', arity: 1 },
+  'subseq': { kind: 'value', fn: 'ksubseq', arity: [3, 5], sfx: true },
+  'rsubseq': { kind: 'value', fn: 'krsubseq', arity: [3, 5], sfx: true },
   'fn?': { kind: 'bool', fn: 'isFn', arity: 1 },
   'sequential?': { kind: 'bool', fn: 'isSequential', arity: 1 },
   'true?': { kind: 'bool', fn: 'isTrue', arity: 1 },
@@ -178,7 +191,7 @@ const TRANSDUCER_ARITY: Record<string, { argc: number; fn: string }> = {
   into: { argc: 3, fn: 'into-xf' },
 };
 const CMP_OPS: Record<string, number> = { '<': 0, '>': 1, '<=': 2, '>=': 3 };
-const ARRAY_OPS: Record<string, string> = { vector: 'vector', 'hash-map': 'hashMap', 'pr-str': 'prStr', prn: 'prn', println: 'println', print: 'print', pr: 'pr', str: 'str', list: 'klist', 'hash-set': 'hashSet', concat: 'kconcat' };
+const ARRAY_OPS: Record<string, string> = { vector: 'vector', 'hash-map': 'hashMap', 'pr-str': 'prStr', prn: 'prn', println: 'println', print: 'print', pr: 'pr', str: 'str', list: 'klist', 'hash-set': 'hashSet', concat: 'kconcat', 'sorted-map': 'sortedMap', 'sorted-set': 'sortedSet' };
 
 const HOST_FNS: Record<string, { fn: string; arity: number }> = {
   'host/args': { fn: 'hostArgs', arity: 0 },
@@ -206,7 +219,7 @@ const RUNTIME_IMPORTS = [
   'println', 'print', 'pr', 'kcaptureOut', 'prn', 'prStr', 'str',
   'SetV', 'ExInfo', 'EMPTY_SET', 'mkSet', 'hashSet', 'kset', 'kdisj', 'isSet', 'isList', 'isSeq', 'items', 'klist', 'kseq', 'krest', 'knext',
   'kcons', 'kemptyOf', 'kreverse', 'kconcat', 'ktake', 'kdrop', 'kmap2', 'kmap3', 'kmapv', 'kfilter', 'kfilterv', 'kremove', 'ksome',
-  'Rec', 'Reified', 'noImpl', 'kevery', 'kinto', 'krange1', 'krange2', 'krange3', 'kapply', 'lazySeq', 'kdoall', 'kdorun', 'kiterate', 'krepeat1', 'krepeat2', 'kcycle', 'ktakeWhile', 'kdropWhile', 'kmapcat', 'krange0', 'ksort1', 'ksort2', 'ksortBy2', 'ksortBy3', 'kcompare', 'kexInfo', 'kexMessage', 'Sym', 'ksymbol1', 'ksymbol2', 'isSymbol', 'kcmpN', 'ksqrt', 'kpow', 'kfloor', 'kceil', 'katom', 'kderef', 'kreset', 'kint', 'kint', 'kquot', 'kbitShl', 'kbitShr', 'kbitAnd', 'kbitOr', 'kbitXor', 'kabs', 'kboolean', 'isInteger', 'isFloat', 'isFn', 'isSequential', 'isTrue', 'isFalse', 'kname', 'knamespace', 'cljstrUpperCase', 'cljstrLowerCase', 'cljstrTrim', 'cljstrBlank', 'cljstrStartsWith', 'cljstrEndsWith', 'cljstrIncludes', 'cljstrReverse', 'cljstrReplace', 'cljstrSplit', 'Atom', 'kswap', 'ksubs2', 'ksubs3', 'cljstrJoin1', 'cljstrJoin2',  'kexData', 'restOf',
+  'Rec', 'Reified', 'noImpl', 'kevery', 'kinto', 'krange1', 'krange2', 'krange3', 'kapply', 'lazySeq', 'kdoall', 'kdorun', 'kiterate', 'krepeat1', 'krepeat2', 'kcycle', 'ktakeWhile', 'kdropWhile', 'kmapcat', 'krange0', 'ksort1', 'ksort2', 'ksortBy2', 'ksortBy3', 'kcompare', 'kexInfo', 'kexMessage', 'Sym', 'ksymbol1', 'ksymbol2', 'isSymbol', 'kcmpN', 'ksqrt', 'kpow', 'kfloor', 'kceil', 'katom', 'kderef', 'kreset', 'kint', 'kint', 'kquot', 'kbitShl', 'kbitShr', 'kbitAnd', 'kbitOr', 'kbitXor', 'kabs', 'kboolean', 'isInteger', 'isFloat', 'isFn', 'SortedMapV', 'sortedMap', 'sortedSet', 'sortedMapBy', 'sortedSetBy', 'ksortedMapEmptyBy', 'ksortedSetEmptyBy', 'isSortedMap', 'isSortedSet', 'isSorted', 'ksubseq3', 'ksubseq5', 'krsubseq3', 'krsubseq5', 'kmeta', 'kwithMeta', 'kresetMeta', 'kidentical', 'khash', 'krealized', 'isSequential', 'isTrue', 'isFalse', 'kname', 'knamespace', 'cljstrUpperCase', 'cljstrLowerCase', 'cljstrTrim', 'cljstrBlank', 'cljstrStartsWith', 'cljstrEndsWith', 'cljstrIncludes', 'cljstrReverse', 'cljstrReplace', 'cljstrSplit', 'Atom', 'kswap', 'ksubs2', 'ksubs3', 'cljstrJoin1', 'cljstrJoin2',  'kexData', 'restOf',
 ];
 
 function unsupported(construct: string, reason: string): never {

@@ -73,6 +73,7 @@ function evalJs(src: string, loadNs: (ns: string) => { source: string } | null, 
     .code.replace(/^import '[^']+';\s*$/gm, '')
     .replace(/^import \* as (\w+) from '([^']+)';\s*$/gm, (_m, v: string, mod: string) => `const ${v} = ${mod === 'clojure/string.js' ? '__str' : mod === 'clojure/set.js' ? '__set' : mod === 'clojure/edn.js' ? '__edn' : mod === 'clojure/walk.js' ? '__walk' : '{}'};`)
     .replace(/^import \{([^}]*)\} from [^;]+;\s*$/gm, (_m, names: string) => `const {${names.replace(/ as /g, ': ')}} = __rt;`)
+    .replace(/^export \{[^}]*\};?\s*$/gm, '')
     .replace(/^export (let|const|function) /gm, '$1 ');
   // eslint-disable-next-line no-new-func -- test-only: evaluating compiler output
   new Function('__rt', '__str', '__set', '__edn', '__walk', code)(rt, rtString, rtSet, rtEdn, rtWalk);

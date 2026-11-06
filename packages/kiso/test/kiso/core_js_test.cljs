@@ -48,3 +48,9 @@
 (deftest meta-on-nil
   (is (nil? (alter-meta! nil identity)))
   (is (nil? (reset-meta! nil {}))))
+
+(defrecord Impl [n] Unimplemented (frob [_] n))
+
+(deftest satisfies-with-impl
+  (is (true? (satisfies? Unimplemented (->Impl 1))))
+  (is (= 1 (frob (->Impl 1)))))

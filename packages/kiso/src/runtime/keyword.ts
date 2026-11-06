@@ -36,6 +36,10 @@ function internKey(name: string, ns: string | null): string {
   return ns ? `${ns}/${name}` : name;
 }
 
+let keywordLookup: ((coll: unknown, key: unknown, notFound: unknown) => unknown) | null = null;
+/** Registered by core.ts (which depends on this module) to avoid an import cycle. */
+export function setKeywordLookup(f: (coll: unknown, key: unknown, notFound: unknown) => unknown): void { keywordLookup = f; }
+
 /** Get or create an interned keyword. Callable as a map lookup function. */
 export function keyword(name: string, ns?: string): Keyword {
   const nsVal = ns ?? null;
@@ -53,7 +57,8 @@ export function keyword(name: string, ns?: string): Keyword {
       const v = (coll as PersistentHashMap).get(fn);
       return v !== undefined ? v : defaultVal;
     }
-    return defaultVal;
+    // Other lookup-capable collections (records, sorted maps/sets, ...) go through core `get`.
+    return keywordLookup ? keywordLookup(coll, fn, defaultVal) : defaultVal;
   } as unknown as Keyword;
 
   Object.defineProperty(fn, '_tag', { value: KW_TAG });

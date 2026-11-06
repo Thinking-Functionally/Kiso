@@ -26,9 +26,15 @@ function assertion(form: Form): Form {
   if (isThrown(form)) {
     if (as) return say('skip');
     const items = (form.data as { items: Form[] }).items;
-    const body = items[(items[0]!.data as { name: string }).name === 'thrown?' ? 2 : 3]!;
+    const withMsg = (items[0]!.data as { name: string }).name === 'thrown-with-msg?';
+    const body = items[withMsg ? 3 : 2]!;
+    // The message check matches the regex against ex-message (falling back to str of the thrown value).
+    const ok = withMsg
+      ? list(sym('if'), list(sym('re-find'), items[2]!, list(sym('or'), list(sym('ex-message'), sym('e__')), list(sym('str'), sym('e__')))),
+          say('pass'), say('fail', text, makeStr('message mismatch:'), list(sym('str'), sym('e__'))))
+      : say('pass');
     return list(sym('try'), body, say('fail', text),
-      list(sym('catch'), makeKeyword(null, 'default'), sym('e__'), say('pass')));
+      list(sym('catch'), makeKeyword(null, 'default'), sym('e__'), ok));
   }
   const eqArgs = form.data.type === 'list' && form.data.items.length === 3 && isSym(form.data.items[0]!, '=') ? form.data.items.slice(1) : null;
   // `(= expected actual)` is evaluated once and both values are reported on failure.
@@ -49,6 +55,8 @@ TEST_MACROS.set('deftest', (items) => {
   const name = (items[1]!.data as { name: string }).name;
   return list(sym('defn'), items[1]!, makeVector([]), say('begin', makeStr(name)), ...items.slice(2));
 });
+// Fixtures are applied by the runner (test/kiso/kiso-suite.test.ts); the form itself compiles to nothing.
+TEST_MACROS.set('use-fixtures', () => makeInt(0));
 TEST_MACROS.set('run-tests', () => makeInt(0));
 TEST_MACROS.set('are', (items) => {
   const names = (items[1]!.data as { items: Form[] }).items;

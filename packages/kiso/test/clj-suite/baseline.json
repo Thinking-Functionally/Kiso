@@ -98,8 +98,11 @@
       "skip": 0
     },
     "as": {
-      "status": "unsupported",
-      "reason": "AssemblyScript backend: (sorted-map …) with 0 args is not supported (unknown core function or arity)"
+      "status": "ran",
+      "pass": 154,
+      "fail": 0,
+      "error": 0,
+      "skip": 0
     }
   },
   "p99_multitrees": {
@@ -124,8 +127,11 @@
       "skip": 0
     },
     "as": {
-      "status": "unsupported",
-      "reason": "AssemblyScript backend: var distinct? is not supported (not defined in this module and not a supported core function)"
+      "status": "ran",
+      "pass": 66,
+      "fail": 0,
+      "error": 0,
+      "skip": 0
     }
   },
   "p99_puzzles": {
