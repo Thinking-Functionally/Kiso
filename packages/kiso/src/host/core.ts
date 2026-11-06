@@ -13,7 +13,22 @@ export type HostOptions = {
   readFile?: (path: string) => string;
   writeFile?: (path: string, content: string) => void;
   now?: () => number;
+  /** Blocks for `ms` (used by core.async `timeout` once every go block is parked). */
+  sleep?: (ms: number) => void;
 };
+
+function blockingSleep(ms: number): void {
+  if (typeof SharedArrayBuffer !== 'undefined' && typeof Atomics !== 'undefined') {
+    try {
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+      return;
+    } catch {
+      // Atomics.wait is not allowed on some main threads; fall back to spinning
+    }
+  }
+  const end = Date.now() + ms;
+  while (Date.now() < end);
+}
 
 /** Platform-neutral host; every capability has a portable default (no Node APIs). */
 
@@ -88,6 +103,7 @@ export async function instantiateCore(source: Uint8Array | WebAssembly.Module, o
         throw new ExitSignal(code);
       },
       now: () => (opts.now ?? Date.now)(),
+      sleep: (ms: number) => (opts.sleep ?? blockingSleep)(ms),
     },
   };
   const instance: WebAssembly.Instance =

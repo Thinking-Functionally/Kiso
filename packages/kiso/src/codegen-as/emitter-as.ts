@@ -98,6 +98,18 @@ const CORE_OPS: Record<string, CoreOp> = {
   'sort-by': { kind: 'value', fn: 'ksortBy', arity: [2, 3], sfx: true },
   compare: { kind: 'value', fn: 'kcompare', arity: 2 },
   'atom': { kind: 'value', fn: 'katom', arity: 1 },
+  chan: { kind: 'value', fn: 'kchan', arity: [0, 1], sfx: true },
+  buffer: { kind: 'value', fn: 'kbuffer', arity: 1 },
+  'dropping-buffer': { kind: 'value', fn: 'kdroppingBuffer', arity: 1 },
+  'sliding-buffer': { kind: 'value', fn: 'kslidingBuffer', arity: 1 },
+  'take!': { kind: 'value', fn: 'kchTake', arity: [1, 2], sfx: true },
+  'put!': { kind: 'value', fn: 'kchPut', arity: [2, 3], sfx: true },
+  'close!': { kind: 'value', fn: 'kchClose', arity: 1 },
+  'offer!': { kind: 'value', fn: 'kchOffer', arity: 2 },
+  timeout: { kind: 'value', fn: 'ktimeout', arity: 1 },
+  'go-start': { kind: 'value', fn: 'kgoStart', arity: 1 },
+  'go-dispatch': { kind: 'value', fn: 'kgoDispatch', arity: 1 },
+  'go-alts': { kind: 'value', fn: 'kgoAlts', arity: 2 },
   'deref': { kind: 'value', fn: 'kderef', arity: 1 },
   'reset!': { kind: 'value', fn: 'kreset', arity: 2 },
   'int': { kind: 'value', fn: 'kint', arity: 1 },
@@ -157,7 +169,10 @@ const HOST_FNS: Record<string, { fn: string; arity: number }> = {
   'host/json-stringify': { fn: 'jsonStringifyV', arity: 1 },
 };
 
+const ASYNC_OPS = new Set(['chan', 'take!', 'put!', 'close!', 'offer!', 'timeout', 'go-start', 'go-dispatch', 'go-alts']);
+
 const RUNTIME_IMPORTS = [
+  'kdrain', 'kchan0', 'kchan1', 'kbuffer', 'kdroppingBuffer', 'kslidingBuffer', 'kchTake1', 'kchTake2', 'kchPut2', 'kchPut3', 'kchClose', 'kchOffer', 'ktimeout', 'kgoStart', 'kgoDispatch', 'kgoAlts',
   'hostArgs', 'hostEnvGet', 'hostReadFileV', 'hostWriteFileV', 'hostStdinV', 'hostExitV', 'hostNowV',
   'Value', 'Fn', 'Num', 'Str', 'Kw', 'NIL', 'TRUE', 'FALSE', 'bool_', 'truthy', 'asFn', 'arityError', 'throwValue', 'toF64', 'mkNum',
   'add', 'sub', 'mul', 'div', 'neg', 'inc', 'dec', 'rem', 'mod', 'lt', 'gt', 'lte', 'gte', 'isZero', 'isPos', 'isNeg', 'eq',
@@ -558,9 +573,12 @@ class Emitter {
     return a.length <= MAX_DIRECT ? `callV${a.length}(${[f, ...a].join(', ')})` : `callVN(${f}, [${a.join(', ')}])`;
   }
 
+  private usesAsync = false;
+
   private tableCall(name: string, a: string[]): string {
     const op = CORE_OPS[name];
     if (op && this.arityOk(op, a.length)) {
+      if (ASYNC_OPS.has(name)) this.usesAsync = true;
       if (op.sfx) return `${op.fn}${a.length}(${a.join(', ')})`;
       if (name === 'reduce') return `${op.fn}${a.length}(${a.join(', ')})`;
       if (name === 'get-in') return `${a.length === 2 ? 'kgetIn' : 'kgetIn3'}(${a.join(', ')})`;
@@ -815,7 +833,7 @@ class Emitter {
       return [`export function ${wasm}(${names.map((n) => `${n}: f64`).join(', ')}): f64 {`, `  return ${nativeName(fn)}(${names.join(', ')});`, '}'];
     }
     if (name === '-main' && ar.params.length === 0) {
-      return [`export function ${wasm}(): void {`, `  ${call([])};`, '}'];
+      return [`export function ${wasm}(): void {`, `  ${call([])};`, ...(this.usesAsync ? ['  kdrain();'] : []), '}'];
     }
     return [`export function ${wasm}(${names.map((n) => `${n}: f64`).join(', ')}): f64 {`, `  return toF64(${call(names)});`, '}'];
   }

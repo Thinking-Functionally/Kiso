@@ -1664,6 +1664,314 @@ export function ksortBy3(kf: Value, cmp: Value, c: Value): Value {
   return sortImpl(kf, cmp, c);
 }
 
+// -- core.async (mirrors src/runtime/async.ts) ----------------------------------
+//
+// Callbacks are queued, never re-entered, so go loops keep a flat stack. The queue is drained by
+// kdrain(), which the exported `main` calls after the user's -main returns; when only timers remain
+// it sleeps through the host (`host.sleep`) and closes the earliest timeout channel.
+
+@external("host", "sleep")
+declare function hostSleep(ms: f64): void;
+
+class Flag {
+  done: bool = false;
+}
+
+class Waiter {
+  constructor(public cb: Value, public val: Value, public flag: Flag, public port: Chan | null) {}
+}
+
+class Task {
+  constructor(public f: Value, public a: Value, public hasArg: bool) {}
+}
+
+class Timer {
+  constructor(public at: f64, public ch: Chan) {}
+}
+
+export class Chan extends Value {
+  buf: Array<Value> = new Array<Value>();
+  takers: Array<Waiter> = new Array<Waiter>();
+  putters: Array<Waiter> = new Array<Waiter>();
+  closed: bool = false;
+  // 0 = unbuffered, 1 = fixed, 2 = dropping, 3 = sliding
+  kind: i32 = 0;
+  n: i32 = 0;
+}
+
+export class BufSpec extends Value {
+  constructor(public kind: i32, public n: i32) {
+    super();
+  }
+}
+
+const taskQueue: Array<Task> = new Array<Task>();
+const timers: Array<Timer> = new Array<Timer>();
+let draining: bool = false;
+
+function enq(f: Value, a: Value, hasArg: bool): void {
+  if (f === NIL) return;
+  taskQueue.push(new Task(f, a, hasArg));
+}
+
+export function kdrain(): void {
+  if (draining) return;
+  draining = true;
+  while (true) {
+    for (let i = 0; i < taskQueue.length; i++) {
+      const t = taskQueue[i];
+      if (t.hasArg) callV1(t.f, t.a);
+      else callV0(t.f);
+    }
+    taskQueue.length = 0;
+    if (timers.length == 0) break;
+    let best = 0;
+    for (let i = 1; i < timers.length; i++) if (timers[i].at < timers[best].at) best = i;
+    const tm = timers[best];
+    timers.splice(best, 1);
+    const wait = tm.at - hostNow();
+    if (wait > 0) hostSleep(wait);
+    chClose(tm.ch);
+  }
+  draining = false;
+}
+
+export function kgoDispatch(f: Value): Value {
+  enq(f, NIL, false);
+  return NIL;
+}
+
+export function kbuffer(n: Value): Value {
+  return new BufSpec(1, <i32>toF64(n));
+}
+export function kdroppingBuffer(n: Value): Value {
+  return new BufSpec(2, <i32>toF64(n));
+}
+export function kslidingBuffer(n: Value): Value {
+  return new BufSpec(3, <i32>toF64(n));
+}
+
+function newChan(kind: i32, n: i32): Chan {
+  const c = new Chan();
+  c.kind = kind;
+  c.n = n;
+  return c;
+}
+
+export function kchan0(): Value {
+  return newChan(0, 0);
+}
+export function kchan1(spec: Value): Value {
+  if (spec === NIL) return newChan(0, 0);
+  if (spec instanceof BufSpec) {
+    const b = changetype<BufSpec>(spec);
+    return newChan(b.kind, b.n);
+  }
+  const n = <i32>toF64(spec);
+  return n == 0 ? newChan(0, 0) : newChan(1, n);
+}
+
+function asChan(v: Value): Chan {
+  if (v instanceof Chan) return changetype<Chan>(v);
+  abort("Value is not a channel");
+  return unreachable();
+}
+
+function nextLive(q: Array<Waiter>): Waiter | null {
+  while (q.length > 0) {
+    const w = q.shift();
+    if (!w.flag.done) {
+      w.flag.done = true;
+      return w;
+    }
+  }
+  return null;
+}
+
+function hasLive(q: Array<Waiter>): bool {
+  while (q.length > 0 && q[0].flag.done) q.shift();
+  return q.length > 0;
+}
+
+function fire(w: Waiter, v: Value): void {
+  if (w.port === null) {
+    enq(w.cb, v, true);
+  } else {
+    const r = new Array<Value>();
+    r.push(v);
+    r.push(w.port!);
+    enq(w.cb, mkVec(r), true);
+  }
+}
+
+function canTake(c: Chan): bool {
+  return c.buf.length > 0 || hasLive(c.putters) || c.closed;
+}
+
+function canPut(c: Chan): bool {
+  return c.closed || hasLive(c.takers) || (c.kind != 0 && (c.buf.length < c.n || c.kind != 1));
+}
+
+function doTake(c: Chan, cb: Value, port: Chan | null): void {
+  if (c.buf.length > 0) {
+    const v = c.buf.shift();
+    const p = nextLive(c.putters);
+    if (p !== null) {
+      c.buf.push(p.val);
+      fire(p, TRUE);
+    }
+    fire(new Waiter(cb, NIL, new Flag(), port), v);
+    return;
+  }
+  const p = nextLive(c.putters);
+  if (p !== null) {
+    fire(p, TRUE);
+    fire(new Waiter(cb, NIL, new Flag(), port), p.val);
+    return;
+  }
+  if (c.closed) {
+    fire(new Waiter(cb, NIL, new Flag(), port), NIL);
+    return;
+  }
+  c.takers.push(new Waiter(cb, NIL, new Flag(), port));
+}
+
+function doPut(c: Chan, v: Value, cb: Value, port: Chan | null): void {
+  const me = new Waiter(cb, NIL, new Flag(), port);
+  if (c.closed) {
+    fire(me, FALSE);
+    return;
+  }
+  const t = nextLive(c.takers);
+  if (t !== null) {
+    fire(t, v);
+    fire(me, TRUE);
+    return;
+  }
+  if (c.kind != 0) {
+    if (c.buf.length < c.n) {
+      c.buf.push(v);
+      fire(me, TRUE);
+      return;
+    }
+    if (c.kind == 2) {
+      fire(me, TRUE);
+      return;
+    }
+    if (c.kind == 3) {
+      c.buf.shift();
+      c.buf.push(v);
+      fire(me, TRUE);
+      return;
+    }
+  }
+  me.val = v;
+  c.putters.push(me);
+}
+
+export function kchTake1(c: Value): Value {
+  doTake(asChan(c), NIL, null);
+  return NIL;
+}
+export function kchTake2(c: Value, cb: Value): Value {
+  doTake(asChan(c), cb, null);
+  return NIL;
+}
+
+function checkPut(v: Value): void {
+  if (v === NIL) abort("Can't put nil on a channel");
+}
+
+export function kchPut2(c: Value, v: Value): Value {
+  checkPut(v);
+  doPut(asChan(c), v, NIL, null);
+  return TRUE;
+}
+export function kchPut3(c: Value, v: Value, cb: Value): Value {
+  checkPut(v);
+  doPut(asChan(c), v, cb, null);
+  return TRUE;
+}
+
+function chClose(c: Chan): void {
+  if (c.closed) return;
+  c.closed = true;
+  while (true) {
+    const t = nextLive(c.takers);
+    if (t === null) break;
+    fire(t, NIL);
+  }
+}
+
+export function kchClose(c: Value): Value {
+  chClose(asChan(c));
+  return NIL;
+}
+
+export function kchOffer(c: Value, v: Value): Value {
+  checkPut(v);
+  const ch = asChan(c);
+  if (!canPut(ch) || ch.closed) return FALSE;
+  doPut(ch, v, NIL, null);
+  return TRUE;
+}
+
+export function ktimeout(ms: Value): Value {
+  const c = newChan(0, 0);
+  timers.push(new Timer(hostNow() + toF64(ms), c));
+  return c;
+}
+
+class GoDone extends Fn {
+  constructor(public c: Chan) {
+    super();
+  }
+  call1(v: Value): Value {
+    if (v !== NIL) doPut(this.c, v, NIL, null);
+    chClose(this.c);
+    return NIL;
+  }
+  invoke(args: Array<Value>): Value {
+    return this.call1(args.length > 0 ? args[0] : NIL);
+  }
+}
+
+export function kgoStart(f: Value): Value {
+  const c = newChan(1, 1);
+  enq(f, new GoDone(c), true);
+  return c;
+}
+
+class AltsPort {
+  constructor(public ch: Chan, public isPut: bool, public val: Value) {}
+}
+
+export function kgoAlts(ports: Value, cb: Value): Value {
+  const list = items(ports);
+  const spec = new Array<AltsPort>();
+  for (let i = 0; i < list.length; i++) {
+    const p = list[i];
+    if (p instanceof Chan) spec.push(new AltsPort(changetype<Chan>(p), false, NIL));
+    else spec.push(new AltsPort(asChan(knth(p, mkNum(0))), true, knth(p, mkNum(1))));
+  }
+  for (let i = 0; i < spec.length; i++) {
+    const s = spec[i];
+    if (s.isPut ? canPut(s.ch) : canTake(s.ch)) {
+      if (s.isPut) doPut(s.ch, s.val, cb, s.ch);
+      else doTake(s.ch, cb, s.ch);
+      return NIL;
+    }
+  }
+  const flag = new Flag();
+  for (let i = 0; i < spec.length; i++) {
+    const s = spec[i];
+    const w = new Waiter(cb, s.val, flag, s.ch);
+    if (s.isPut) s.ch.putters.push(w);
+    else s.ch.takers.push(w);
+  }
+  return NIL;
+}
+
 // -- Atoms -------------------------------------------------------------------
 
 export class Atom extends Value {
