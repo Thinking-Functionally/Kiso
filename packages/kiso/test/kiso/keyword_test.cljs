@@ -37,3 +37,9 @@
   (is (not (symbol? :a)))
   (is (not (symbol? "a")))
   (is (= "a" (name 'a))))
+
+(deftest keyword-identity
+  (is (identical? :a :a))
+  (is (identical? :a/b :a/b))
+  (is (not (identical? :a :b)))
+  (is (identical? (keyword "x") :x)))

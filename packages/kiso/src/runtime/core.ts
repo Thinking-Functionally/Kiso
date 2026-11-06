@@ -143,6 +143,10 @@ export function count(coll: unknown): number {
 }
 
 export function conj(coll: unknown, ...items: unknown[]): unknown {
+  return keepMeta(coll, conjImpl(coll, ...items));
+}
+
+function conjImpl(coll: unknown, ...items: unknown[]): unknown {
   let result = coll;
   for (const item of items) {
     if (result === null || result === undefined) {
@@ -224,6 +228,10 @@ export function subs(s: unknown, start: unknown, end?: unknown): string {
 }
 
 export function assoc(coll: unknown, key: unknown, val: unknown): unknown {
+  return keepMeta(coll, assocImpl(coll, key, val));
+}
+
+function assocImpl(coll: unknown, key: unknown, val: unknown): unknown {
   if (isHashMap(coll)) {
     return (coll as PersistentHashMap).assoc(key, val);
   }
@@ -239,6 +247,10 @@ export function assoc(coll: unknown, key: unknown, val: unknown): unknown {
 }
 
 export function dissoc(coll: unknown, ...keys: unknown[]): unknown {
+  return keepMeta(coll, dissocImpl(coll, ...keys));
+}
+
+function dissocImpl(coll: unknown, ...keys: unknown[]): unknown {
   if (isSortedMap(coll)) {
     let m = coll as PersistentTreeMap;
     for (const k of keys) { m = m.dissoc(k); }
@@ -407,6 +419,10 @@ export function get_in(m: unknown, ks: unknown, notFound?: unknown): unknown {
 }
 
 export function assoc_in(m: unknown, ks: unknown, v: unknown): unknown {
+  return keepMeta(m, assoc_inImpl(m, ks, v));
+}
+
+function assoc_inImpl(m: unknown, ks: unknown, v: unknown): unknown {
   const arr: unknown[] = [];
   let s = seq(ks);
   while (s !== null) { arr.push(seqFirst(s)); s = seqNext(s); }
@@ -415,10 +431,18 @@ export function assoc_in(m: unknown, ks: unknown, v: unknown): unknown {
 }
 
 export function update(m: unknown, k: unknown, f: (...args: unknown[]) => unknown, ...args: unknown[]): unknown {
+  return keepMeta(m, updateImpl(m, k, f, ...args));
+}
+
+function updateImpl(m: unknown, k: unknown, f: (...args: unknown[]) => unknown, ...args: unknown[]): unknown {
   return assoc(m, k, f(get(m, k), ...args));
 }
 
 export function update_in(m: unknown, ks: unknown, f: (...args: unknown[]) => unknown, ...args: unknown[]): unknown {
+  return keepMeta(m, update_inImpl(m, ks, f, ...args));
+}
+
+function update_inImpl(m: unknown, ks: unknown, f: (...args: unknown[]) => unknown, ...args: unknown[]): unknown {
   const arr: unknown[] = [];
   let s = seq(ks);
   while (s !== null) { arr.push(seqFirst(s)); s = seqNext(s); }
@@ -457,6 +481,10 @@ export function vals(m: unknown): unknown {
 }
 
 export function merge(...maps: unknown[]): unknown {
+  return keepMeta(maps[0], mergeImpl(...maps));
+}
+
+function mergeImpl(...maps: unknown[]): unknown {
   let result: PersistentHashMap | null = null;
   for (const m of maps) {
     if (m === null || m === undefined) continue;
@@ -846,6 +874,10 @@ export function peek(coll: unknown): unknown {
 }
 
 export function pop(coll: unknown): unknown {
+  return keepMeta(coll, popImpl(coll));
+}
+
+function popImpl(coll: unknown): unknown {
   if (isVector(coll)) return (coll as PersistentVector).pop();
   if (isList(coll)) return (coll as any)._rest ?? EMPTY_LIST;
   throw new Error('pop not supported on this type');
@@ -1236,6 +1268,10 @@ export function dorun(coll: unknown): null {
 // -- empty / set --
 
 export function empty(coll: unknown): unknown {
+  return keepMeta(coll, emptyImpl(coll));
+}
+
+function emptyImpl(coll: unknown): unknown {
   if (isVector(coll)) return vector();
   if (isList(coll)) return EMPTY_LIST;
   if (isHashMap(coll)) return hm();
@@ -1508,6 +1544,15 @@ export let _print_level_: number | null = null;
 // -- Metadata --
 
 const metaStore = new WeakMap<object, unknown>();
+
+/** Collection operations return a new object that carries over the source's metadata (as in Clojure). */
+export function keepMeta(from: unknown, to: unknown): unknown {
+  if (from !== to && typeof from === 'object' && from !== null && typeof to === 'object' && to !== null) {
+    const m = metaStore.get(from);
+    if (m !== undefined && !metaStore.has(to)) metaStore.set(to, m);
+  }
+  return to;
+}
 
 export function meta(obj: unknown): unknown {
   if (obj === null || obj === undefined || typeof obj !== 'object' && typeof obj !== 'function') return null;

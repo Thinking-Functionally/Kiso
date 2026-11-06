@@ -517,6 +517,9 @@ export function kempty(v: Value): bool {
 }
 
 export function kconj(c: Value, x: Value): Value {
+  return keepMeta(c, kconjImpl(c, x));
+}
+function kconjImpl(c: Value, x: Value): Value {
   if (c === NIL) return new Vec([x], 1, true);
   if (c instanceof Vec) {
     const v = changetype<Vec>(c);
@@ -553,6 +556,9 @@ export function kconj(c: Value, x: Value): Value {
 }
 
 export function kconjN(c: Value, xs: Array<Value>): Value {
+  return keepMeta(c, kconjNImpl(c, xs));
+}
+function kconjNImpl(c: Value, xs: Array<Value>): Value {
   let r = c;
   for (let i = 0; i < xs.length; i++) r = kconj(r, xs[i]);
   return r;
@@ -617,6 +623,9 @@ export function kget(c: Value, k: Value): Value {
 }
 
 export function kassoc(c: Value, k: Value, v: Value): Value {
+  return keepMeta(c, kassocImpl(c, k, v));
+}
+function kassocImpl(c: Value, k: Value, v: Value): Value {
   if (c instanceof Rec) {
     const r = changetype<Rec>(c);
     const i = recIndex(r, k);
@@ -639,6 +648,9 @@ export function kassoc(c: Value, k: Value, v: Value): Value {
 }
 
 export function kassocN(c: Value, kvs: Array<Value>): Value {
+  return keepMeta(c, kassocNImpl(c, kvs));
+}
+function kassocNImpl(c: Value, kvs: Array<Value>): Value {
   if (kvs.length % 2 != 0) abort("assoc expects an even number of key/value arguments");
   let r = c;
   for (let i = 0; i < kvs.length; i += 2) r = kassoc(r, kvs[i], kvs[i + 1]);
@@ -646,6 +658,9 @@ export function kassocN(c: Value, kvs: Array<Value>): Value {
 }
 
 export function kdissoc(c: Value, k: Value): Value {
+  return keepMeta(c, kdissocImpl(c, k));
+}
+function kdissocImpl(c: Value, k: Value): Value {
   if (c === NIL) return NIL;
   if (!(c instanceof MapV)) {
     abort("dissoc requires a map");
@@ -716,6 +731,9 @@ export function kpeek(c: Value): Value {
   return klast(c);
 }
 export function kpop(c: Value): Value {
+  return keepMeta(c, kpopImpl(c));
+}
+function kpopImpl(c: Value): Value {
   const v = asVec(c);
   if (v.n == 0) abort("Can't pop empty collection");
   if (v.list) return listOf(copyN(v.a, v.n).slice(1));
@@ -840,6 +858,9 @@ export function kreduce2(f: Value, c: Value): Value {
 }
 
 export function kupdate(m: Value, k: Value, f: Value, extra: Array<Value>): Value {
+  return keepMeta(m, kupdateImpl(m, k, f, extra));
+}
+function kupdateImpl(m: Value, k: Value, f: Value, extra: Array<Value>): Value {
   const cur = kget(m, k);
   let nv: Value;
   if (extra.length == 0) nv = callV1(f, cur);
@@ -943,6 +964,9 @@ export function kset(c: Value): Value {
   return mkSet(items(c));
 }
 export function kdisj(s: Value, k: Value): Value {
+  return keepMeta(s, kdisjImpl(s, k));
+}
+function kdisjImpl(s: Value, k: Value): Value {
   if (s === NIL) return NIL;
   if (!(s instanceof SetV)) {
     abort("disj requires a set");
@@ -1029,6 +1053,9 @@ export function kcons(x: Value, c: Value): Value {
   return new ConsSeq(x, c);
 }
 export function kemptyOf(c: Value): Value {
+  return keepMeta(c, kemptyOfImpl(c));
+}
+function kemptyOfImpl(c: Value): Value {
   if (c instanceof MapV) return EMPTY_MAP;
   if (c instanceof SetV) return EMPTY_SET;
   if (c instanceof Vec) return changetype<Vec>(c).list ? listOf([]) : EMPTY_VEC;
@@ -2480,6 +2507,14 @@ export function krsubseq5(sc: Value, t1: Value, k1: Value, t2: Value, k2: Value)
   return subseqImpl(sc, t1, k1, t2, k2, true);
 }
 
+// Collection operations carry the source's metadata over to the new collection (as in Clojure).
+function keepMeta(from: Value, to: Value): Value {
+  if (from === to || !(from instanceof Vec || from instanceof MapV || from instanceof SetV || from instanceof SortedMapV)) return to;
+  const m = kmeta(from);
+  if (m === NIL || kmeta(to) !== NIL) return to;
+  if (to instanceof Vec || to instanceof MapV || to instanceof SetV || to instanceof SortedMapV) return kwithMeta(to, m);
+  return to;
+}
 export function kmeta(v: Value): Value {
   if (v instanceof SortedMapV) return changetype<SortedMapV>(v).meta;
   if (v instanceof Vec) return changetype<Vec>(v).meta;
@@ -2488,7 +2523,7 @@ export function kmeta(v: Value): Value {
   if (v instanceof Atom) return changetype<Atom>(v).meta;
   return NIL;
 }
-// Metadata is kept on the value it was attached to; operations that build a new collection do not carry it over.
+// `with-meta` copies the collection shell; conj/assoc/dissoc/disj/pop/update/empty carry it over via keepMeta.
 export function kwithMeta(v: Value, m: Value): Value {
   if (v instanceof SortedMapV) {
     const o = changetype<SortedMapV>(v);

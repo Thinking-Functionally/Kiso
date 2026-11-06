@@ -1101,6 +1101,22 @@ defmacro('extend-type', (items, form) => {
   return makeList([sym('extend-type*'), ...items.slice(1)], ...loc(form));
 });
 
+defmacro('extend-protocol', (items, form) => {
+  // (extend-protocol P T1 (m [this] ..) T2 (m [this] ..)) → (do (extend-type* T1 P (m ..)) (extend-type* T2 P (m ..)))
+  const proto = nth(items, 1);
+  const groups: Array<{ target: Form; methods: Form[] }> = [];
+  for (const item of items.slice(2)) {
+    if (item.data.type === 'list') {
+      if (groups.length === 0) throw new Error('extend-protocol: method before a type');
+      groups[groups.length - 1]!.methods.push(item);
+    } else {
+      groups.push({ target: item, methods: [] });
+    }
+  }
+  const forms = groups.map((g) => makeList([sym('extend-type*'), g.target, proto, ...g.methods], ...loc(form)));
+  return makeList([sym('do'), ...forms], ...loc(form));
+});
+
 defmacro('deftype', (items, form) => {
   // (deftype Name [fields...] Proto (method [this args] body) ...)
   // → (deftype* Name [fields...] Proto (method [this args] body) ...)

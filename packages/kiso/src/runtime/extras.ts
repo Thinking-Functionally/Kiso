@@ -10,7 +10,7 @@ import { isSortedSet } from './sorted-set.js';
 import { isKeyword } from './keyword.js';
 import { isSymbol } from './symbol.js';
 import { equiv } from './equiv.js';
-import { map, take, drop, take_while, drop_while, reverse, truthy, nth, invoke } from './core.js';
+import { keepMeta, map, take, drop, take_while, drop_while, reverse, truthy, nth, invoke } from './core.js';
 
 const call = (f: unknown, ...a: unknown[]): unknown => (typeof f === 'function' ? (f as (...x: unknown[]) => unknown)(...a) : invoke(f, ...a));
 
@@ -55,6 +55,10 @@ export function distinct_p(x: unknown, ...more: unknown[]): boolean {
 }
 
 export function disj(s: unknown, ...ks: unknown[]): unknown {
+  return keepMeta(s, disjImpl(s, ...ks));
+}
+
+function disjImpl(s: unknown, ...ks: unknown[]): unknown {
   if (s === null || s === undefined) return null;
   let out = s as { disj(k: unknown): unknown };
   for (const k of ks) out = out.disj(k) as typeof out;

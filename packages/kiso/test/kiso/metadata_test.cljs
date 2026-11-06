@@ -1,5 +1,4 @@
 ;; Metadata (ported from test/runtime/metadata.test.ts).
-;; targets: js
 (ns kiso.metadata-test
   (:require [clojure.test :refer [deftest is]]))
 

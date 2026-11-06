@@ -29,3 +29,17 @@
 (deftest reify-inline
   (is (= 42 (foo (reify IFoo (foo [this] 42)))))
   (is (= 30 (compute (reify ICalc (compute [this x y] (+ x y))) 10 20))))
+
+(defprotocol Describe (describe [x]))
+(deftype Cat [])
+(deftype Dog [])
+(extend-protocol Describe
+  Cat (describe [x] "cat")
+  Dog (describe [x] "dog")
+  nil (describe [x] "nothing"))
+
+(deftest extend-protocol-macro
+  (is (= "cat" (describe (->Cat))))
+  (is (= "dog" (describe (->Dog))))
+  (is (= "nothing" (describe nil)))
+  (is (true? (satisfies? Describe (->Cat)))))

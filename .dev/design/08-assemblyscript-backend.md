@@ -11,13 +11,13 @@ Supported on AS: everything in the Explicit Subset except the rows below, plus
 - regex via an in-wasm backtracking engine (`as-runtime/kiso-regex.ts`, D49): classes, anchors, groups, alternation, greedy/lazy quantifiers, leading `(?i)(?s)(?m)`, 5M step limit against ReDoS. Lookaround, backreferences and named groups abort at construction;
 - `satisfies?` / `instance?` resolved at compile time (closed world, D50);
 - mutable arrays (`array`, `aget`, `aset`, `alength`, `aclone`, `into-array`, `to-array`, D51);
-- `defmulti` / `defmethod` through a runtime `MultiFn` registry with `:default` (D52).
+- `defmulti` / `defmethod` through a runtime `MultiFn` registry with `:default`, global hierarchy (`derive`, `isa?`, `parents`, `ancestors`, `descendants`, `underive`) and `prefer-method` (D52, D54); no explicit/custom hierarchies;
+- `case` without a default, `implements?`, `extend-protocol`, `map` over 3+ collections, metadata carried through `conj`/`assoc`/`dissoc`/`disj`/`pop`/`update`/`empty` (D54, D55).
 
 Not supported on AS (compile error or abort with a clear message):
 - `try` / `catch` / `finally` / `throw`: AssemblyScript has no catchable exceptions (`ex-info` aborts). Revisit when AS supports the wasm exception-handling proposal;
-- `type`, `implements?`, `isa?` / `derive` / `prefer-method` (also missing on JS), `eval`;
-- JS interop (`js/`, `.method`, `new` of non-module types), `case` without a default;
-- keywords are not interned (equality is structural); metadata is dropped by operations that build new collections.
+- `type` (returns a JS constructor), `eval` (needs the compiler at runtime);
+- JS interop (`js/`, `.method`, `new` of non-module types): wasm has no JS host inside the module; use `host/` functions.
 
 ## M3 Outcome
 
