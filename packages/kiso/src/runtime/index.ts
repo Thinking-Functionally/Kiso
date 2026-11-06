@@ -5,7 +5,7 @@ export { hashMap, isHashMap } from './hash-map.js';
 export { hashSet, isHashSet } from './hash-set.js';
 export { keyword, isKeyword } from './keyword.js';
 export { symbol, isSymbol } from './symbol.js';
-export { list, EMPTY_LIST, isList } from './list.js';
+export { list, EMPTY_LIST, isList, restArgs } from './list.js';
 export { Atom, atom, isAtom, deref, reset_m, swap_m } from './atom.js';
 export { equiv } from './equiv.js';
 export { seq, first, rest, next, toArray, into } from './seq.js';

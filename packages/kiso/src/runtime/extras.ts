@@ -135,3 +135,13 @@ export class StackOverflowError {
     return x instanceof RangeError && /call stack|too much recursion/i.test(x.message);
   }
 }
+
+// -- ex-info / ex-message / ex-data --
+
+export function ex_info(msg: string, data: unknown, cause?: unknown): Error {
+  const e = new Error(msg, cause === undefined ? undefined : { cause }) as Error & { data?: unknown };
+  e.data = data;
+  return e;
+}
+export const ex_message = (e: unknown): unknown => (e instanceof Error ? e.message : null);
+export const ex_data = (e: unknown): unknown => (e instanceof Error ? ((e as { data?: unknown }).data ?? null) : null);

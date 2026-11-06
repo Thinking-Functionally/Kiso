@@ -11,7 +11,7 @@ import { vector } from '../../src/runtime/vector.js';
 import { keyword } from '../../src/runtime/keyword.js';
 import { hashMap } from '../../src/runtime/hash-map.js';
 import { hashSet } from '../../src/runtime/hash-set.js';
-import { list, EMPTY_LIST } from '../../src/runtime/list.js';
+import { list, EMPTY_LIST, restArgs } from '../../src/runtime/list.js';
 import { symbol as runtimeSymbol } from '../../src/runtime/symbol.js';
 import { seq, first, next as seqNext } from '../../src/runtime/seq.js';
 import { defprotocol, protocolFn } from '../../src/runtime/protocols.js';
@@ -23,7 +23,7 @@ import {
 const analyzer = new Analyzer();
 
 const runtime: Record<string, unknown> = {
-  vector, keyword, hashMap, hashSet, list, EMPTY_LIST,
+  vector, keyword, hashMap, hashSet, list, EMPTY_LIST, restArgs,
   symbol: runtimeSymbol, seq, first, next: seqNext,
   defprotocol, protocolFn,
   ifn, truthy, add, subtract, multiply, nil_p, not, str, get, count,
@@ -109,13 +109,12 @@ describe('variadic edge cases', () => {
     expect(run(code)).toBe(2);
   });
 
-  it('variadic with no extra args gives empty JS array', () => {
-    // In CLJS, rest is nil when empty; our impl gives JS [] (empty array)
+  it('variadic with no extra args gives nil', () => {
     const code = `
-      (let [f (fn [x & rest] (.-length rest))]
+      (let [f (fn [x & rest] (nil? rest))]
         (f 1))
     `;
-    expect(run(code)).toBe(0);
+    expect(run(code)).toBe(true);
   });
 
   it('multi-arity with variadic arity', () => {

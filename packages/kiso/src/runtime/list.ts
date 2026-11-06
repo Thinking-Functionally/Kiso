@@ -60,3 +60,8 @@ export function list(...args: unknown[]): List {
 export function isList(x: unknown): x is List {
   return x instanceof Cons || x instanceof EmptyList;
 }
+
+/** Rest-parameter packing: nil when no extra args, otherwise a list (Clojure semantics). */
+export function restArgs(args: unknown[]): List | null {
+  return args.length === 0 ? null : list(...args);
+}

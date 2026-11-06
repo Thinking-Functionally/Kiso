@@ -452,7 +452,8 @@ function emitFn(node: { name: string | null; arities: FnArity[] }, outerCtx: Emi
     const ctx: EmitCtx = { ...scopeWith(deeper(caseCtx), [...arity.params, ...(arity.restParam ? [arity.restParam] : [])]), loopBindings: arity.params };
     const body = emitFnBody(arity.body, ctx, bi);
     if (arity.restParam) {
-      return `${ci}default: {\n${bi}let [${params}${params ? ', ' : ''}...${munge(arity.restParam)}] = __args;\n${bi}${body}\n${ci}}`;
+      const rp = munge(arity.restParam);
+      return `${ci}default: {\n${bi}let [${params}${params ? ', ' : ''}...${rp}] = __args;\n${bi}${rp} = restArgs(${rp});\n${bi}${body}\n${ci}}`;
     }
     return `${ci}case ${n}: {\n${bi}let [${params}] = __args;\n${bi}${body}\n${ci}}`;
   }).join('\n');
@@ -485,7 +486,8 @@ function emitSingleArity(name: string, arity: FnArity, outerCtx: EmitCtx): strin
   const inner = deeper(outerCtx);
   const ctx: EmitCtx = { ...scopeWith(inner, [...arity.params, ...(arity.restParam ? [arity.restParam] : [])]), loopBindings: arity.params };
   const body = emitFnBody(arity.body, ctx, ind(inner));
-  return `function ${name}(${params.join(', ')}) {\n${ind(inner)}${body}\n${ind(outerCtx)}}`;
+  const restInit = arity.restParam ? `${munge(arity.restParam)} = restArgs(${munge(arity.restParam)});\n${ind(inner)}` : '';
+  return `function ${name}(${params.join(', ')}) {\n${ind(inner)}${restInit}${body}\n${ind(outerCtx)}}`;
 }
 
 function emitDeftype(node: DeftypeNode, ctx: EmitCtx): string {
@@ -830,7 +832,7 @@ const RUNTIME_FUNCTIONS = new Set([
   'pr-str', 'prn-str', 'print-str', 'println-str',
   'array', 'aclone', 'js-delete',
   'hash', 'type', 'instance?',
-  'StackOverflowError', 'Throwable', 'Exception',
+  'restArgs', 'StackOverflowError', 'Throwable', 'Exception', 'ex-info', 'ex-message', 'ex-data',
   'prn', 'pr',
   'reversible?', 'sorted?',
   'satisfies?', 'implements?',
@@ -933,7 +935,10 @@ function scanNodeForRuntime(node: Node, used: Set<string>): void {
       break;
     }
     case 'fn': {
-      for (const a of node.arities) scanNodeForRuntime(a.body, used);
+      for (const a of node.arities) {
+        if (a.restParam) used.add('restArgs');
+        scanNodeForRuntime(a.body, used);
+      }
       break;
     }
     case 'def': {

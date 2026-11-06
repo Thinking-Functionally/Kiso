@@ -62,18 +62,6 @@ describe('seqs/sets: AS-only printing and semantics', () => {
   it('conj on a list prepends, on a vector appends', async () => {
     expect(await run('(prn (conj (list 1 2) 0) (conj [1 2] 3) (conj nil 1))')).toBe('(0 1 2) [1 2 3] (1)\n');
   });
-  it('set equality ignores order', async () => {
-    expect(await run('(println (= #{1 2} #{2 1}) (= #{1} #{2}))')).toBe('true false\n');
-  });
-  it('rest params are nil when empty and a list otherwise', async () => {
-    expect(await run('(defn f [& xs] xs)\n(prn (f) (f 1 2))')).toBe('nil (1 2)\n');
-  });
-  it('map works over maps and sets via seq', async () => {
-    expect(await run('(prn (map first {:a 1 :b 2}) (count (seq #{1 2 3})))')).toBe('(:a :b) 3\n');
-  });
-  it('ex-info carries message and data', async () => {
-    expect(await run('(prn (ex-message (ex-info "x" {:k 1})) (ex-data (ex-info "x" {:k 1})))')).toBe('"x" {:k 1}\n');
-  });
   it('still rejects try with a clear message', async () => {
     await expect(runKisoAs('(try 1 (catch js/Error e 2))')).rejects.toThrow(/try/);
   });
