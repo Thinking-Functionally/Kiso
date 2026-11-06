@@ -44,3 +44,38 @@
 (deftest used-as-a-value
   (is (= [2 3] (mapv kind [1 2])))
   (is (= :z (kind :z))))
+
+(derive ::circle ::shape)
+(derive ::square ::shape)
+(derive ::shape ::thing)
+
+(deftest hierarchy-queries
+  (is (isa? ::circle ::shape))
+  (is (isa? ::circle ::thing))
+  (is (isa? ::circle ::circle))
+  (is (not (isa? ::shape ::circle)))
+  (is (= #{::shape} (parents ::circle)))
+  (is (= #{::shape ::thing} (ancestors ::circle)))
+  (is (= #{::circle ::square ::shape} (descendants ::thing)))
+  (is (nil? (parents ::thing)))
+  (is (isa? [::circle ::square] [::shape ::shape])))
+
+(defmulti describe identity)
+(defmethod describe ::shape [_] "a shape")
+(defmethod describe ::square [_] "a square")
+(defmethod describe :default [_] "unknown")
+
+(deftest dispatch-through-hierarchy
+  (is (= "a square" (describe ::square)))
+  (is (= "a shape" (describe ::circle)))
+  (is (= "unknown" (describe :other))))
+
+(derive ::a ::p1)
+(derive ::a ::p2)
+(defmulti pick identity)
+(defmethod pick ::p1 [_] :p1)
+(defmethod pick ::p2 [_] :p2)
+(prefer-method pick ::p2 ::p1)
+
+(deftest prefer-resolves-ambiguity
+  (is (= :p2 (pick ::a))))

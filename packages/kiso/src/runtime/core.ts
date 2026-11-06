@@ -1476,7 +1476,9 @@ export function satisfies_p(protocol: unknown, x: unknown): boolean {
   return Object.values(methods).some((sym) => typeof target[sym] === 'function');
 }
 
+// Like CLJS: only types that implement the protocol inline count, not natives extended via extend-type.
 export function implements_p(protocol: unknown, x: unknown): boolean {
+  if (x == null || typeof x !== 'object') return false;
   return satisfies_p(protocol, x);
 }
 

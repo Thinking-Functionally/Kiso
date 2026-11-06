@@ -168,6 +168,13 @@ const CORE_OPS: Record<string, CoreOp> = {
   aclone: { kind: 'value', fn: 'kaclone', arity: 1 },
   'into-array': { kind: 'value', fn: 'kintoArray', arity: 1 },
   'to-array': { kind: 'value', fn: 'kintoArray', arity: 1 },
+  derive: { kind: 'value', fn: 'kderive', arity: 2 },
+  underive: { kind: 'value', fn: 'kunderive', arity: 2 },
+  parents: { kind: 'value', fn: 'kparents', arity: 1 },
+  ancestors: { kind: 'value', fn: 'kancestors', arity: 1 },
+  descendants: { kind: 'value', fn: 'kdescendants', arity: 1 },
+  'isa?': { kind: 'bool', fn: 'kisa', arity: 2 },
+  'prefer-method': { kind: 'value', fn: 'kpreferMethod', arity: 3 },
   defmultiFn: { kind: 'value', fn: 'kdefmulti', arity: 1 },
   'read-string': { kind: 'value', fn: 'readStringV', arity: 1 },
   'cljedn-read-string': { kind: 'value', fn: 'readStringV', arity: 1 },
@@ -185,6 +192,7 @@ const CORE_OPS: Record<string, CoreOp> = {
   're-seq': { kind: 'value', fn: 'kreSeq', arity: 2 },
   're-pattern': { kind: 'value', fn: 'krePattern', arity: 1 },
   'satisfies?': { kind: 'bool', fn: 'satisfiesTest', arity: 2 },
+  'implements?': { kind: 'bool', fn: 'implementsTest', arity: 2 },
   'instance?': { kind: 'bool', fn: 'instanceTest', arity: 2 },
   'regexp?': { kind: 'bool', fn: 'isRegex', arity: 1 },
   subs: { kind: 'value', fn: 'ksubs', arity: [2, 3], sfx: true },
@@ -247,8 +255,8 @@ const RUNTIME_IMPORTS = [
   'callV0', 'callV1', 'callV2', 'callV3', 'callVN', 'kkeyword', 'ktransient', 'kpersistent', 'kconjBang', 'kassocBang', 'kdissocBang', 'kdisjBang', 'kreduce2', 'kreduce3', 'kreduced', 'isReduced', 'kunreduced', 'kensureReduced', 'kupdate', 'kgetIn', 'kgetIn3',
   'println', 'print', 'pr', 'kcaptureOut', 'prn', 'prStr', 'str',
   'SetV', 'ExInfo', 'EMPTY_SET', 'mkSet', 'hashSet', 'kset', 'kdisj', 'isSet', 'isList', 'isSeq', 'items', 'klist', 'kseq', 'krest', 'knext',
-  'kcons', 'kemptyOf', 'kreverse', 'kconcat', 'ktake', 'kdrop', 'kmap2', 'kmap3', 'kmapv', 'kfilter', 'kfilterv', 'kremove', 'ksome',
-  'Rec', 'Reified', 'noImpl', 'kevery', 'kinto', 'krange1', 'krange2', 'krange3', 'kapply', 'lazySeq', 'kdoall', 'kdorun', 'kiterate', 'krepeat1', 'krepeat2', 'kcycle', 'ktakeWhile', 'kdropWhile', 'kmapcat', 'krange0', 'ksort1', 'ksort2', 'ksortBy2', 'ksortBy3', 'kcompare', 'kexInfo', 'kexMessage', 'Sym', 'ksymbol1', 'ksymbol2', 'isSymbol', 'kcmpN', 'ksqrt', 'kpow', 'kfloor', 'kceil', 'katom', 'kderef', 'kreset', 'kint', 'kint', 'kquot', 'kbitShl', 'kbitShr', 'kbitAnd', 'kbitOr', 'kbitXor', 'kabs', 'kboolean', 'isInteger', 'isFloat', 'isFn', 'SortedMapV', 'sortedMap', 'sortedSet', 'kdefmulti', 'kmultiAddMethod', 'karray', 'kintoArray', 'kaget', 'kaset', 'kalength', 'kaclone', 'Arr', 'sortedMapBy', 'sortedSetBy', 'ksortedMapEmptyBy', 'ksortedSetEmptyBy', 'isSortedMap', 'isSortedSet', 'isSorted', 'ksubseq3', 'ksubseq5', 'krsubseq3', 'krsubseq5', 'kmeta', 'kwithMeta', 'kresetMeta', 'kidentical', 'khash', 'krealized', 'isSequential', 'isTrue', 'isFalse', 'kname', 'knamespace', 'cljstrUpperCase', 'cljstrLowerCase', 'cljstrTrim', 'cljstrBlank', 'cljstrStartsWith', 'cljstrEndsWith', 'cljstrIncludes', 'cljstrReverse', 'cljstrReplace', 'cljstrSplit2', 'cljstrSplit3', 'cljstrReplaceFirst', 'Re', 'kreCompile', 'kreFind', 'kreMatches', 'kreSeq', 'krePattern', 'isRegex', 'cljstrCapitalize', 'cljstrIndexOf2', 'cljstrIndexOf3', 'cljstrLastIndexOf2', 'cljstrLastIndexOf3', 'cljstrTriml', 'cljstrTrimr', 'cljstrTrimNewline', 'cljstrSplitLines', 'cljstrEscape', 'isChar', 'kchar', 'Atom', 'kswap', 'ksubs2', 'ksubs3', 'cljstrJoin1', 'cljstrJoin2',  'kexData', 'restOf',
+  'kcons', 'kemptyOf', 'kreverse', 'kconcat', 'ktake', 'kdrop', 'kmapN', 'kmap2', 'kmap3', 'kmapv', 'kfilter', 'kfilterv', 'kremove', 'ksome',
+  'Rec', 'Reified', 'noImpl', 'kevery', 'kinto', 'krange1', 'krange2', 'krange3', 'kapply', 'lazySeq', 'kdoall', 'kdorun', 'kiterate', 'krepeat1', 'krepeat2', 'kcycle', 'ktakeWhile', 'kdropWhile', 'kmapcat', 'krange0', 'ksort1', 'ksort2', 'ksortBy2', 'ksortBy3', 'kcompare', 'kexInfo', 'kexMessage', 'Sym', 'ksymbol1', 'ksymbol2', 'isSymbol', 'kcmpN', 'ksqrt', 'kpow', 'kfloor', 'kceil', 'katom', 'kderef', 'kreset', 'kint', 'kint', 'kquot', 'kbitShl', 'kbitShr', 'kbitAnd', 'kbitOr', 'kbitXor', 'kabs', 'kboolean', 'isInteger', 'isFloat', 'isFn', 'SortedMapV', 'sortedMap', 'sortedSet', 'kderive', 'kunderive', 'kparents', 'kancestors', 'kdescendants', 'kisa', 'kpreferMethod', 'kdefmulti', 'kmultiAddMethod', 'karray', 'kintoArray', 'kaget', 'kaset', 'kalength', 'kaclone', 'Arr', 'sortedMapBy', 'sortedSetBy', 'ksortedMapEmptyBy', 'ksortedSetEmptyBy', 'isSortedMap', 'isSortedSet', 'isSorted', 'ksubseq3', 'ksubseq5', 'krsubseq3', 'krsubseq5', 'kmeta', 'kwithMeta', 'kresetMeta', 'kidentical', 'khash', 'krealized', 'isSequential', 'isTrue', 'isFalse', 'kname', 'knamespace', 'cljstrUpperCase', 'cljstrLowerCase', 'cljstrTrim', 'cljstrBlank', 'cljstrStartsWith', 'cljstrEndsWith', 'cljstrIncludes', 'cljstrReverse', 'cljstrReplace', 'cljstrSplit2', 'cljstrSplit3', 'cljstrReplaceFirst', 'Re', 'kreCompile', 'kreFind', 'kreMatches', 'kreSeq', 'krePattern', 'isRegex', 'cljstrCapitalize', 'cljstrIndexOf2', 'cljstrIndexOf3', 'cljstrLastIndexOf2', 'cljstrLastIndexOf3', 'cljstrTriml', 'cljstrTrimr', 'cljstrTrimNewline', 'cljstrSplitLines', 'cljstrEscape', 'isChar', 'kchar', 'Atom', 'kswap', 'ksubs2', 'ksubs3', 'cljstrJoin1', 'cljstrJoin2',  'kexData', 'restOf',
 ];
 
 function unsupported(construct: string, reason: string): never {
@@ -536,7 +544,9 @@ class Emitter {
     }
     if (methods.length === 0) return unsupported(`var ${name}`, 'not defined in this module and not a supported core function');
     const foldFn = { '+': 'add', '-': 'sub', '*': 'mul', max: 'kmax', min: 'kmin' }[name];
-    const variadic = ARRAY_OPS[name]
+    const variadic = name === 'map'
+      ? ['    if (args.length > 3) return kmapN(args[0], args.slice(1));']
+      : ARRAY_OPS[name]
       ? [`    return ${ARRAY_OPS[name]}(args);`]
       : foldFn
         ? [`    if (args.length > ${MAX_DIRECT}) {`, '      let acc = args[0];', `      for (let i = 1; i < args.length; i++) acc = ${foldFn}(acc, args[i]);`, '      return acc;', '    }']
@@ -554,11 +564,12 @@ class Emitter {
   /** `satisfies?` / `instance?` are resolved at compile time against the closed world of types and protocols. */
   private typeTest(name: string, args: LExpr[]): string | null {
     const head = args[0];
-    if ((name !== 'satisfies?' && name !== 'instance?') || args.length !== 2 || head?.type !== 'var' || head.kind !== 'global') return null;
-    if (name === 'satisfies?') {
+    if ((name !== 'satisfies?' && name !== 'implements?' && name !== 'instance?') || args.length !== 2 || head?.type !== 'var' || head.kind !== 'global') return null;
+    if (name === 'satisfies?' || name === 'implements?') {
       if (!this.protocols.has(head.name)) return null;
-      this.satUsed.add(head.name);
-      return `SAT_${mangle(head.name)}(${this.expr(args[1]!)})`;
+      const inline = name === 'implements?';
+      this.satUsed.add(`${inline ? 'I' : 'S'}:${head.name}`);
+      return `${inline ? 'IMPL' : 'SAT'}_${mangle(head.name)}(${this.expr(args[1]!)})`;
     }
     const user = this.types.get(head.name);
     if (user) return `(${this.expr(args[1]!)} instanceof ${user.cls})`;
@@ -567,14 +578,19 @@ class Emitter {
     return null;
   }
 
-  private satFn(protocol: string): string[] {
+  /** `satisfies?` accepts any extension; `implements?` (like CLJS) only types that implement the protocol inline. */
+  private satFn(key: string): string[] {
+    const inline = key.startsWith('I:');
+    const protocol = key.slice(2);
+    const fname = `${inline ? 'IMPL' : 'SAT'}_${mangle(protocol)}`;
     const tests: string[] = [];
     for (const i of this.impls.filter((x) => x.protocol === protocol)) {
-      if (i.target.kind === 'default') return [`function SAT_${mangle(protocol)}(x: Value): bool {`, '  return x !== NIL;', '}'];
+      if (inline && i.target.kind !== 'user') continue;
+      if (i.target.kind === 'default') return [`function ${fname}(x: Value): bool {`, '  return x !== NIL;', '}'];
       tests.push(i.target.kind === 'user' ? `x instanceof ${i.target.cls}` : i.target.test('x'));
     }
     tests.push(`(x instanceof Reified && changetype<Reified>(x).hasProtocol(${JSON.stringify(protocol + '/')}))`);
-    return [`function SAT_${mangle(protocol)}(x: Value): bool {`, `  return ${[...new Set(tests)].join(' || ')};`, '}'];
+    return [`function ${fname}(x: Value): bool {`, `  return ${[...new Set(tests)].join(' || ')};`, '}'];
   }
 
   private coreOpFor(e: LExpr): { name: string; op: string } | null {
@@ -643,7 +659,7 @@ class Emitter {
         }
         const tt = this.typeTest(core.op, e.args);
         if (tt) return tt;
-        if (core.op === 'satisfies?' || core.op === 'instance?') return `truthy(${this.expr(e)})`;
+        if (core.op === 'satisfies?' || core.op === 'implements?' || core.op === 'instance?') return `truthy(${this.expr(e)})`;
         const op = CORE_OPS[core.op];
         if (op && op.kind === 'bool' && this.arityOk(op, e.args.length)) {
           return `${op.fn}(${this.args(e.args).join(', ')})`;
@@ -691,10 +707,10 @@ class Emitter {
   }
 
   private coreCall(name: string, args: LExpr[]): string {
-    if (name === 'satisfies?' || name === 'instance?') {
+    if (name === 'satisfies?' || name === 'implements?' || name === 'instance?') {
       const tt = this.typeTest(name, args);
       if (tt) return `bool_(${tt})`;
-      return unsupported(`(${name} …)`, name === 'satisfies?' ? 'first argument must be a protocol defined in this module' : 'first argument must be a deftype/defrecord of this module or a built-in type name');
+      return unsupported(`(${name} …)`, name !== 'instance?' ? 'first argument must be a protocol defined in this module' : 'first argument must be a deftype/defrecord of this module or a built-in type name');
     }
     const a = this.args(args);
     switch (name) {
@@ -743,6 +759,9 @@ class Emitter {
       case 'update':
         if (a.length >= 3) return `kupdate(${a[0]}, ${a[1]}, ${a[2]}, [${a.slice(3).join(', ')}])`;
         break;
+      case 'map':
+        if (a.length >= 4) return `kmapN(${a[0]}, [${a.slice(1).join(', ')}])`;
+        return this.tableCall(name, a);
       case 'max':
       case 'min':
         if (a.length >= 1) return a.reduce((acc, x) => `k${name}(${acc}, ${x})`);
@@ -785,6 +804,7 @@ class Emitter {
       case 'new': {
         const t = e.ctor.type === 'var' && e.ctor.kind === 'global' ? this.types.get(e.ctor.name) : undefined;
         if (!t && e.ctor.type === 'var' && e.ctor.name === 'LazySeq' && e.args.length === 1) return `lazySeq(${this.expr(e.args[0]!)})`;
+        if (!t && e.ctor.type === 'var' && ['Error', 'Exception', 'Throwable'].includes(e.ctor.name) && e.args.length === 1) return `kexInfo(${this.expr(e.args[0]!)}, NIL)`;
         if (!t) return unsupported('new', 'only deftype/defrecord types of this module can be constructed');
         if (e.args.length !== t.fields.length) return unsupported(`(${t.name}. …)`, `expects ${t.fields.length} argument(s), got ${e.args.length}`);
         return `new ${t.cls}(${this.args(e.args).join(', ')})`;

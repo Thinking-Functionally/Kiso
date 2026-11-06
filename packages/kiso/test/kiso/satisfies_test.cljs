@@ -36,3 +36,13 @@
   (is (false? (instance? Sq (Circ. 1))))
   (is (true? (instance? Circ (Circ. 1))))
   (is (false? (instance? Sq nil))))
+
+(defprotocol Quacks (quack [this]))
+(deftype Duck [] Quacks (quack [this] "quack"))
+(extend-type String Quacks (quack [this] "str-quack"))
+
+(deftest implements-is-inline-only
+  (is (true? (implements? Quacks (->Duck))))
+  (is (false? (implements? Quacks "s")))
+  (is (true? (satisfies? Quacks "s")))
+  (is (false? (implements? Quacks nil))))

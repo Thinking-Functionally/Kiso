@@ -149,8 +149,11 @@
       "skip": 0
     },
     "as": {
-      "status": "unsupported",
-      "reason": "AssemblyScript backend: new is not supported (only deftype/defrecord types of this module can be constructed)"
+      "status": "ran",
+      "pass": 62,
+      "fail": 0,
+      "error": 0,
+      "skip": 0
     }
   },
   "depth": {

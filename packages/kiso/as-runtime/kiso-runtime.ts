@@ -1429,6 +1429,29 @@ class MapSeq2 extends LazySeq {
   }
 }
 
+class MapSeqN extends LazySeq {
+  constructor(
+    public f: Value,
+    public cs: Array<Value>,
+  ) {
+    super();
+  }
+  compute(): void {
+    const heads = new Array<Value>();
+    const tails = new Array<Value>();
+    for (let i = 0; i < this.cs.length; i++) {
+      const x = sq(this.cs[i]);
+      if (x === null) return;
+      heads.push(x.h);
+      tails.push(x.t);
+    }
+    this.cell(callVN(this.f, heads), new MapSeqN(this.f, tails));
+  }
+}
+export function kmapN(f: Value, cs: Array<Value>): Value {
+  return new MapSeqN(f, cs);
+}
+
 class FilterSeq extends LazySeq {
   constructor(
     public f: Value,
@@ -2709,18 +2732,124 @@ export function kaclone(arr: Value): Value {
   return new Arr(arrOf(arr).slice(0));
 }
 
+// Global hierarchy for isa?/derive (keywords and symbols; no class hierarchy, like ClojureScript).
+const hTags = new Array<Value>();
+const hParents = new Array<Array<Value>>();
+
+function hIndex(tag: Value): i32 {
+  for (let i = 0; i < hTags.length; i++) if (eq(unchecked(hTags[i]), tag)) return i;
+  return -1;
+}
+function ancestorList(tag: Value): Array<Value> {
+  const out = new Array<Value>();
+  const stack = new Array<Value>();
+  const i0 = hIndex(tag);
+  if (i0 >= 0) for (let k = 0; k < hParents[i0].length; k++) stack.push(hParents[i0][k]);
+  while (stack.length > 0) {
+    const p = stack.pop();
+    let seen = false;
+    for (let k = 0; k < out.length; k++) if (eq(out[k], p)) seen = true;
+    if (seen) continue;
+    out.push(p);
+    const j = hIndex(p);
+    if (j >= 0) for (let k = 0; k < hParents[j].length; k++) stack.push(hParents[j][k]);
+  }
+  return out;
+}
+function setOrNil(xs: Array<Value>): Value {
+  return xs.length == 0 ? NIL : mkSet(xs);
+}
+export function kisa(child: Value, parent: Value): bool {
+  if (eq(child, parent)) return true;
+  const anc = ancestorList(child);
+  for (let i = 0; i < anc.length; i++) if (eq(anc[i], parent)) return true;
+  if (child instanceof Vec && parent instanceof Vec) {
+    const a = changetype<Vec>(child);
+    const b = changetype<Vec>(parent);
+    if (!a.list && !b.list && a.n == b.n) {
+      for (let i = 0; i < a.n; i++) if (!kisa(unchecked(a.a[i]), unchecked(b.a[i]))) return false;
+      return true;
+    }
+  }
+  return false;
+}
+export function kderive(tag: Value, parent: Value): Value {
+  if (eq(tag, parent)) abort("derive: tag and parent must differ");
+  if (kisa(parent, tag)) abort("derive: cyclic hierarchy");
+  const i = hIndex(tag);
+  if (i < 0) {
+    hTags.push(tag);
+    hParents.push([parent]);
+  } else {
+    const ps = hParents[i];
+    let has = false;
+    for (let k = 0; k < ps.length; k++) if (eq(ps[k], parent)) has = true;
+    if (!has) ps.push(parent);
+  }
+  return NIL;
+}
+export function kunderive(tag: Value, parent: Value): Value {
+  const i = hIndex(tag);
+  if (i >= 0) {
+    const ps = hParents[i];
+    for (let k = 0; k < ps.length; k++) {
+      if (eq(ps[k], parent)) {
+        ps.splice(k, 1);
+        break;
+      }
+    }
+  }
+  return NIL;
+}
+export function kparents(tag: Value): Value {
+  const i = hIndex(tag);
+  return i < 0 ? NIL : setOrNil(hParents[i].slice(0));
+}
+export function kancestors(tag: Value): Value {
+  return setOrNil(ancestorList(tag));
+}
+export function kdescendants(tag: Value): Value {
+  const out = new Array<Value>();
+  for (let i = 0; i < hTags.length; i++) {
+    if (!eq(hTags[i], tag) && kisa(hTags[i], tag)) out.push(hTags[i]);
+  }
+  return setOrNil(out);
+}
+
 // Multimethod: runtime registry of (dispatch value -> method); `:default` is the fallback.
 class MultiFn extends Fn {
   keys: Array<Value> = new Array<Value>();
   fns: Array<Value> = new Array<Value>();
+  prefA: Array<Value> = new Array<Value>();
+  prefB: Array<Value> = new Array<Value>();
   dflt: Value = NIL;
   constructor(public dispatch: Value) {
     super();
+  }
+  prefers(a: Value, b: Value): bool {
+    for (let i = 0; i < this.prefA.length; i++) if (eq(this.prefA[i], a) && eq(this.prefB[i], b)) return true;
+    return false;
+  }
+  dominates(a: Value, b: Value): bool {
+    return this.prefers(a, b) || kisa(a, b);
   }
   invoke(args: Array<Value>): Value {
     const dv = callVN(this.dispatch, args);
     for (let i = 0; i < this.keys.length; i++) {
       if (eq(unchecked(this.keys[i]), dv)) return callVN(unchecked(this.fns[i]), args);
+    }
+    let best = -1;
+    for (let i = 0; i < this.keys.length; i++) {
+      if (!kisa(dv, this.keys[i])) continue;
+      if (best < 0 || this.dominates(this.keys[i], this.keys[best])) best = i;
+    }
+    if (best >= 0) {
+      for (let i = 0; i < this.keys.length; i++) {
+        if (i != best && kisa(dv, this.keys[i]) && !this.dominates(this.keys[best], this.keys[i])) {
+          abort("Multiple methods match dispatch value: " + toStr(dv, true) + " and neither is preferred");
+        }
+      }
+      return callVN(this.fns[best], args);
     }
     if (this.dflt !== NIL) return callVN(this.dflt, args);
     abort("No method in multimethod for dispatch value: " + toStr(dv, true));
@@ -2729,6 +2858,13 @@ class MultiFn extends Fn {
 }
 export function kdefmulti(dispatch: Value): Value {
   return new MultiFn(dispatch);
+}
+export function kpreferMethod(mf: Value, preferred: Value, other: Value): Value {
+  if (!(mf instanceof MultiFn)) abort("prefer-method: target is not a multimethod");
+  const m = changetype<MultiFn>(mf);
+  m.prefA.push(preferred);
+  m.prefB.push(other);
+  return mf;
 }
 export function kmultiAddMethod(mf: Value, dv: Value, f: Value): Value {
   if (!(mf instanceof MultiFn)) abort("defmethod: target is not a multimethod");
