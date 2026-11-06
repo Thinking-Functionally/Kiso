@@ -6,7 +6,6 @@
 
 import type { Form } from '../reader/form.js';
 import type { Node, LetBinding } from './node.js';
-import { currentMacroTarget } from './macros.js';
 
 type AnalyzeFn = (form: Form, scope: { locals: Set<string>; parent: unknown }) => Node;
 
@@ -244,10 +243,10 @@ function expandAssociative(
 // -- Helper: make runtime calls as Node AST --
 
 function makeNthCall(coll: Node, index: number): Node {
-  // JS: nth also walks lazy/infinite seqs; AS lowers `get` on vectors
+  // nth (unlike get) also walks lazy/infinite seqs
   return {
     type: 'invoke',
-    fn: { type: 'var-ref', name: currentMacroTarget() === 'as' ? 'get' : 'nth', local: false },
+    fn: { type: 'var-ref', name: 'nth', local: false },
     args: [coll, { type: 'literal', value: index, jsType: 'number' }, { type: 'literal', value: null, jsType: 'null' }],
   };
 }
