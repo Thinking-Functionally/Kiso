@@ -35,6 +35,13 @@ export class Kw extends Value {
   }
 }
 
+// Mutable array (JS-style `array`, `aget`, `aset`); identity equality.
+export class Arr extends Value {
+  constructor(public a: Array<Value>) {
+    super();
+  }
+}
+
 export class Sym extends Value {
   h: i32 = 0;
   constructor(
@@ -494,6 +501,7 @@ function asVec(v: Value): Vec {
 export function kcount(v: Value): Value {
   if (v === NIL) return mkNum(0);
   if (v instanceof Rec) return mkNum(<f64>changetype<Rec>(v).nFields());
+  if (v instanceof Arr) return mkNum(<f64>changetype<Arr>(v).a.length);
   if (v instanceof Vec) return mkNum(<f64>changetype<Vec>(v).n);
   if (v instanceof MapV) return mkNum(<f64>changetype<MapV>(v).n);
   if (v instanceof SetV) return mkNum(<f64>changetype<SetV>(v).m.n);
@@ -555,6 +563,9 @@ export function knth3(c: Value, i: Value, dflt: Value, hasDefault: bool): Value 
   if (c instanceof Vec) {
     const v = changetype<Vec>(c);
     if (idx >= 0 && idx < v.n) return unchecked(v.a[idx]);
+  } else if (c instanceof Arr) {
+    const a = changetype<Arr>(c).a;
+    if (idx >= 0 && idx < a.length) return unchecked(a[idx]);
   } else if (c instanceof Str) {
     const s = changetype<Str>(c).v;
     if (idx >= 0 && idx < s.length) return new Str(s.charAt(idx));
@@ -959,6 +970,7 @@ export function items(c: Value): Array<Value> {
     return v.n == v.a.length ? v.a : copyN(v.a, v.n);
   }
   if (c instanceof LazySeq) return lazyItems(c);
+  if (c instanceof Arr) return changetype<Arr>(c).a.slice(0);
   if (c instanceof MapV) {
     const m = changetype<MapV>(c);
     const out = new Array<Value>();
@@ -1183,6 +1195,7 @@ function quote(s: string): string {
 
 export function toStr(v: Value, readable: bool): string {
   if (v === NIL) return readable ? "nil" : "";
+  if (v instanceof Arr) return "#object[Array]";
   if (v instanceof Rec) {
     const r = changetype<Rec>(v);
     let out = "#" + r.typeName() + "{";
@@ -2665,4 +2678,33 @@ export function cljstrSplit3(s: Value, sep: Value, limit: Value): Value {
   const out = new Array<Value>();
   for (let i = 0; i < parts.length; i++) out.push(new Str(parts[i]));
   return mkVec(out);
+}
+
+function arrOf(v: Value): Array<Value> {
+  if (!(v instanceof Arr)) abort("expected an array");
+  return changetype<Arr>(v).a;
+}
+export function karray(args: Array<Value>): Value {
+  return new Arr(args);
+}
+export function kintoArray(c: Value): Value {
+  return new Arr(items(c).slice(0));
+}
+export function kaget(arr: Value, i: Value): Value {
+  const a = arrOf(arr);
+  const idx = <i32>toF64(i);
+  return idx >= 0 && idx < a.length ? unchecked(a[idx]) : NIL;
+}
+export function kaset(arr: Value, i: Value, v: Value): Value {
+  const a = arrOf(arr);
+  const idx = <i32>toF64(i);
+  if (idx < 0 || idx >= a.length) abort("aset: index out of bounds");
+  a[idx] = v;
+  return v;
+}
+export function kalength(arr: Value): Value {
+  return mkNum(<f64>arrOf(arr).length);
+}
+export function kaclone(arr: Value): Value {
+  return new Arr(arrOf(arr).slice(0));
 }

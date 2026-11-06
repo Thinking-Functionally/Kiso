@@ -1,6 +1,6 @@
 // JSON <-> Value (D24). Objects become maps with keyword keys, arrays vectors, null nil.
 import {
-  Value, Num, Str, Kw, Vec, MapV, SetV, Rec, NIL, TRUE, FALSE, mkNum, mkVec, mkMap, fmtNum, toStr, LazySeq, items,
+  Value, Num, Str, Kw, Vec, MapV, SetV, Rec, NIL, TRUE, FALSE, mkNum, mkVec, mkMap, fmtNum, toStr, LazySeq, items, Sym, klist, mkSet,
 } from "./kiso-runtime";
 
 class Parser {
@@ -232,4 +232,124 @@ export function jsonParseV(s: Value): Value {
 }
 export function jsonStringifyV(v: Value): Value {
   return new Str(jsonStringify(v));
+}
+
+// clojure.edn / read-string: numbers, strings, chars, keywords, symbols, lists, vectors, maps, sets, nil/true/false.
+class EdnReader {
+  i: i32 = 0;
+  constructor(public s: string) {}
+
+  fail(msg: string): void {
+    abort("read-string: " + msg + " at " + this.i.toString());
+  }
+  isDelim(c: i32): bool {
+    return c == 32 || c == 9 || c == 10 || c == 13 || c == 44 || c == 40 || c == 41 || c == 91 || c == 93 || c == 123 || c == 125 || c == 34 || c == 59;
+  }
+  ws(): void {
+    while (this.i < this.s.length) {
+      const c = this.s.charCodeAt(this.i);
+      if (c == 32 || c == 9 || c == 10 || c == 13 || c == 44) this.i++;
+      else if (c == 59) {
+        while (this.i < this.s.length && this.s.charCodeAt(this.i) != 10) this.i++;
+      } else break;
+    }
+  }
+  atEnd(): bool {
+    this.ws();
+    return this.i >= this.s.length;
+  }
+  token(): string {
+    const start = this.i;
+    while (this.i < this.s.length && !this.isDelim(this.s.charCodeAt(this.i))) this.i++;
+    return this.s.substring(start, this.i);
+  }
+  seqUntil(close: i32): Array<Value> {
+    const out = new Array<Value>();
+    while (true) {
+      this.ws();
+      if (this.i >= this.s.length) {
+        this.fail("unexpected end of input");
+        return out;
+      }
+      if (this.s.charCodeAt(this.i) == close) {
+        this.i++;
+        return out;
+      }
+      out.push(this.read());
+    }
+    return out;
+  }
+  read(): Value {
+    this.ws();
+    if (this.i >= this.s.length) {
+      this.fail("unexpected end of input");
+      return NIL;
+    }
+    const c = this.s.charCodeAt(this.i);
+    if (c == 40) {
+      this.i++;
+      return klist(this.seqUntil(41));
+    }
+    if (c == 91) {
+      this.i++;
+      return mkVec(this.seqUntil(93));
+    }
+    if (c == 123) {
+      this.i++;
+      const kv = this.seqUntil(125);
+      if (kv.length % 2 != 0) this.fail("map literal must contain an even number of forms");
+      return mkMap(kv);
+    }
+    if (c == 35 && this.s.charCodeAt(this.i + 1) == 123) {
+      this.i += 2;
+      return mkSet(this.seqUntil(125));
+    }
+    if (c == 34) {
+      const p = new Parser(this.s);
+      p.i = this.i;
+      const v = p.str();
+      this.i = p.i;
+      return new Str(v);
+    }
+    if (c == 92) {
+      this.i++;
+      const start = this.i;
+      this.i++;
+      while (this.i < this.s.length && !this.isDelim(this.s.charCodeAt(this.i))) this.i++;
+      const t = this.s.substring(start, this.i);
+      if (t == "newline") return new Str("\n");
+      if (t == "space") return new Str(" ");
+      if (t == "tab") return new Str("\t");
+      if (t == "return") return new Str("\r");
+      return new Str(t);
+    }
+    const t = this.token();
+    if (t.length == 0) {
+      this.fail("unexpected character");
+      return NIL;
+    }
+    if (t == "nil") return NIL;
+    if (t == "true") return TRUE;
+    if (t == "false") return FALSE;
+    const c0 = t.charCodeAt(0);
+    if (c0 == 58) {
+      const body = t.substring(1);
+      const k = body.indexOf("/");
+      return k > 0 ? new Kw(body.substring(0, k), body.substring(k + 1)) : new Kw("", body);
+    }
+    const c1 = t.length > 1 ? t.charCodeAt(1) : 0;
+    if ((c0 >= 48 && c0 <= 57) || ((c0 == 45 || c0 == 43) && c1 >= 48 && c1 <= 57)) {
+      const last = t.charCodeAt(t.length - 1);
+      const n = last == 78 || last == 77 ? t.substring(0, t.length - 1) : t;
+      return mkNum(parseFloat(n));
+    }
+    const k = t.indexOf("/");
+    return k > 0 && k < t.length - 1 ? new Sym(t.substring(0, k), t.substring(k + 1)) : new Sym("", t);
+  }
+}
+
+export function readStringV(s: Value): Value {
+  const r = new EdnReader(toStr(s, false));
+  if (r.atEnd()) return NIL;
+  return r.read();
 }
