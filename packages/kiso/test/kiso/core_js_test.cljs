@@ -38,6 +38,13 @@
   (is (= js/String (type "hi")))
   (is (nil? (type nil))))
 
-(deftest satisfies-unknown-protocol
+(defprotocol Unimplemented (frob [x]))
+
+(deftest satisfies-without-impl
+  (is (false? (satisfies? Unimplemented 42)))
+  (is (false? (satisfies? Unimplemented nil)))
+  (is (false? (satisfies? Unimplemented {:a 1}))))
+
+(deftest meta-on-nil
   (is (nil? (alter-meta! nil identity)))
   (is (nil? (reset-meta! nil {}))))

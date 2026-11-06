@@ -149,7 +149,8 @@ export function emitModuleWithMappings(nodes: Node[], hooks?: Map<string, Codege
   }
   // Collect user-defined top-level names to detect collisions with runtime imports
   const userDefs = new Set<string>();
-  for (const node of nodes) {
+  const flat = flattenTopLevelDo(nodes);
+  for (const node of flat) {
     if (node.type === 'def') userDefs.add(munge(node.name));
     if (node.type === 'deftype') { userDefs.add(node.name); userDefs.add(`_to_${node.name}`); }
     if (node.type === 'defrecord') { userDefs.add(node.name); userDefs.add(`_to_${node.name}`); userDefs.add(`map_to_${node.name}`); }
@@ -157,8 +158,8 @@ export function emitModuleWithMappings(nodes: Node[], hooks?: Map<string, Codege
 
   // `def` inside a function/do body assigns a module-level binding that must be declared once
   const nestedDefs = new Set<string>();
-  for (const node of nodes) if (node.type !== 'def') collectDefs(node, nestedDefs);
-  for (const node of nodes) if (node.type === 'def' && node.init) collectDefs(node.init, nestedDefs);
+  for (const node of flat) if (node.type !== 'def') collectDefs(node, nestedDefs);
+  for (const node of flat) if (node.type === 'def' && node.init) collectDefs(node.init, nestedDefs);
   const hoisted = [...nestedDefs].map(munge).filter((n) => !userDefs.has(n));
   for (const n of hoisted) userDefs.add(n);
 
@@ -239,6 +240,16 @@ export function emitModuleWithMappings(nodes: Node[], hooks?: Map<string, Codege
   }
 
   return { code: segments.join('\n\n'), mappings };
+}
+
+// Top-level `do` blocks (defprotocol/defmulti expansions) are emitted flat, so their defs are top-level defs.
+function flattenTopLevelDo(nodes: Node[]): Node[] {
+  const out: Node[] = [];
+  for (const n of nodes) {
+    if (n.type === 'do') out.push(...flattenTopLevelDo([...n.statements, n.ret]));
+    else out.push(n);
+  }
+  return out;
 }
 
 function collectDefs(node: unknown, out: Set<string>): void {
