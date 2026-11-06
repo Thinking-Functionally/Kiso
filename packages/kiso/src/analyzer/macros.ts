@@ -751,63 +751,40 @@ function parseSeqBindings(items: Form[]): BindSeg[] {
 
 let doseqCounter = 0;
 
-// Build a single-level doseq loop: iterate seq, apply modifiers, execute inner
+// One loop per binding. `cont` is what runs when the current element is done (recur to the
+// enclosing loop, or nil at top level): a false :when continues, a false :while ends this loop.
 function buildDoseqLoop(
-  segs: BindSeg[], segIdx: number, inner: Form, form: Form,
+  segs: BindSeg[], segIdx: number, inner: Form, form: Form, cont: Form,
 ): Form {
-  // Find the next binding segment from segIdx onward
-  // Collect modifiers that apply before the next binding
-  if (segIdx >= segs.length) return inner;
+  if (segIdx >= segs.length) return makeList([sym('do'), inner, cont], ...loc(form));
 
   const seg = segs[segIdx]!;
   if (seg.type === 'when') {
-    // (if (truthy pred) rest nil)
-    const rest = buildDoseqLoop(segs, segIdx + 1, inner, form);
-    return makeList([
-      sym('if'), seg.pred, rest, makeNil(),
-    ], ...loc(form));
+    const rest = buildDoseqLoop(segs, segIdx + 1, inner, form, cont);
+    return makeList([sym('if'), seg.pred, rest, cont], ...loc(form));
   }
   if (seg.type === 'while') {
-    // (if (truthy pred) rest nil) — :while stops iteration at loop level
-    // For doseq, :while is like :when but we need to break the loop.
-    // We handle this by returning a sentinel in the loop.
-    // Simpler: just treat as :when for now (different from CLJS which breaks outer loop).
-    // Actually, :while should stop the current iteration level entirely.
-    // We'll use a flag approach: wrap in if, else return sentinel symbol.
-    const rest = buildDoseqLoop(segs, segIdx + 1, inner, form);
-    return makeList([
-      sym('if'), seg.pred, rest,
-      makeList([sym('js*'), makeStr('"__while_break__"')]),
-    ], ...loc(form));
+    const rest = buildDoseqLoop(segs, segIdx + 1, inner, form, cont);
+    return makeList([sym('if'), seg.pred, rest, makeNil()], ...loc(form));
   }
   if (seg.type === 'let') {
-    // (let* bindings rest)
-    const rest = buildDoseqLoop(segs, segIdx + 1, inner, form);
+    const rest = buildDoseqLoop(segs, segIdx + 1, inner, form, cont);
     return makeList([sym('let*'), seg.bindings, rest], ...loc(form));
   }
-  // seg.type === 'bind' — new iteration level
   const id = doseqCounter++;
   const sSym = sym(`ds__s${id}`);
-  const rest = buildDoseqLoop(segs, segIdx + 1, inner, form);
-  // (loop* [s (seq coll)]
-  //   (if s
-  //     (let* [name (first s)]
-  //       (do rest (recur (next s))))
-  //     nil))
-  return makeList([
+  const next = makeList([sym('recur'), makeList([sym('next'), sSym])]);
+  const rest = buildDoseqLoop(segs, segIdx + 1, inner, form, next);
+  const loop = makeList([
     sym('loop*'),
     makeVector([sSym, makeList([sym('seq'), seg.coll])]),
     makeList([
       sym('if'), sSym,
-      makeList([
-        sym('let*'),
-        makeVector([seg.name, makeList([sym('first'), sSym])]),
-        makeList([sym('do'), rest,
-          makeList([sym('recur'), makeList([sym('next'), sSym])])]),
-      ]),
+      makeList([sym('let*'), makeVector([seg.name, makeList([sym('first'), sSym])]), rest]),
       makeNil(),
     ]),
   ], ...loc(form));
+  return cont.data.type === 'nil' ? loop : makeList([sym('do'), loop, cont], ...loc(form));
 }
 
 defmacro('doseq', (items, form) => {
@@ -817,7 +794,7 @@ defmacro('doseq', (items, form) => {
   const body = items.slice(2);
   const bodyForm = body.length === 1 ? body[0]! : makeList([sym('do'), ...body], ...loc(form));
   const segs = parseSeqBindings(bindings.data.items);
-  return buildDoseqLoop(segs, 0, bodyForm, form);
+  return buildDoseqLoop(segs, 0, bodyForm, form, makeNil());
 });
 
 let forCounter = 0;
