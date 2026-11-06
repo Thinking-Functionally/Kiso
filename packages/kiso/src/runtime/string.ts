@@ -1,6 +1,7 @@
 // clojure.string — String manipulation functions matching ClojureScript semantics.
 
 import { toArray } from './seq.js';
+import { vector, type PersistentVector } from './vector.js';
 
 /** Returns true if s is nil, empty, or contains only whitespace. */
 export function blank_p(s: string | null | undefined): boolean {
@@ -20,10 +21,13 @@ export function ends_with_p(s: string, substr: string): boolean {
 }
 
 /** Escapes characters in s using a character map. */
-export function escape(s: string, cmap: Record<string, string>): string {
+export function escape(s: string, cmap: Record<string, string> | { get(k: unknown): unknown }): string {
+  const lookup = typeof (cmap as { get?: unknown }).get === 'function'
+    ? (ch: string) => (cmap as { get(k: unknown): unknown }).get(ch)
+    : (ch: string) => (cmap as Record<string, string>)[ch];
   let result = '';
   for (const ch of s) {
-    result += cmap[ch] ?? ch;
+    result += (lookup(ch) as string | null | undefined) ?? ch;
   }
   return result;
 }
@@ -34,8 +38,9 @@ export function includes_p(s: string, substr: string): boolean {
 }
 
 /** Returns the index of value in s, optionally starting from fromIndex. */
-export function index_of(s: string, value: string, fromIndex?: number): number {
-  return fromIndex != null ? s.indexOf(value, fromIndex) : s.indexOf(value);
+export function index_of(s: string, value: string, fromIndex?: number): number | null {
+  const i = fromIndex != null ? s.indexOf(value, fromIndex) : s.indexOf(value);
+  return i < 0 ? null : i;
 }
 
 /** Returns a string of all elements in coll separated by an optional separator. */
@@ -54,8 +59,9 @@ function seqToArray(coll: unknown): unknown[] {
 }
 
 /** Returns the last index of value in s. */
-export function last_index_of(s: string, value: string): number {
-  return s.lastIndexOf(value);
+export function last_index_of(s: string, value: string): number | null {
+  const i = s.lastIndexOf(value);
+  return i < 0 ? null : i;
 }
 
 /** Converts string to all lower-case. */
@@ -71,7 +77,8 @@ export function replace(s: string, match: string | RegExp, replacement: string):
   if (typeof match === 'string') {
     return s.split(match).join(replacement);
   }
-  return s.replace(match, replacement);
+  const global = match.global ? match : new RegExp(match.source, match.flags + 'g');
+  return s.replace(global, replacement);
 }
 
 /** Replaces only the first occurrence of match in s. */
@@ -92,23 +99,18 @@ export function reverse(s: string): string {
 }
 
 /** Splits string by pattern, optionally with a limit. */
-export function split(s: string, re: RegExp, limit?: number): string[] {
-  if (limit === undefined) return s.split(re);
-  if (limit <= 0) return s.split(re);
+export function split(s: string, re: RegExp, limit?: number): PersistentVector {
   const parts = s.split(re);
-  if (parts.length <= limit) return parts;
+  if (limit === undefined || limit <= 0 || parts.length <= limit) return vector(...parts);
   const head = parts.slice(0, limit - 1);
-  const rest = parts.slice(limit - 1).join(
-    // Reconstruct with original separator — find first match to get separator
-    (s.match(re)?.[0]) ?? ''
-  );
-  head.push(rest);
-  return head;
+  // Reconstruct with original separator — find first match to get separator
+  head.push(parts.slice(limit - 1).join(s.match(re)?.[0] ?? ''));
+  return vector(...head);
 }
 
 /** Splits s by line breaks. */
-export function split_lines(s: string): string[] {
-  return s.split(/\r?\n/);
+export function split_lines(s: string): PersistentVector {
+  return vector(...s.split(/\r?\n/));
 }
 
 /** True if s starts with substr. */
