@@ -2143,6 +2143,7 @@ export function kswap(a: Value, f: Value, args: Array<Value>): Value {
 // -- More numerics, predicates, names ----------------------------------------
 
 export function kint(x: Value): Value {
+  if (x instanceof Str) return mkNum(<f64>changetype<Str>(x).v.codePointAt(0));
   return mkNum(Math.trunc(toF64(x)));
 }
 export function kquot(a: Value, b: Value): Value {
@@ -2266,6 +2267,69 @@ export function cljstrJoin2(sep: Value, c: Value): Value {
     out += toStr(a[i], false);
   }
   return new Str(out);
+}
+export function cljstrCapitalize(s: Value): Value {
+  const t = strOf(s);
+  if (t.length == 0) return new Str("");
+  return new Str(t.charAt(0).toUpperCase() + t.substring(1).toLowerCase());
+}
+function idxOrNil(i: i32): Value {
+  return i < 0 ? NIL : mkNum(<f64>i);
+}
+export function cljstrIndexOf2(s: Value, v: Value): Value {
+  return idxOrNil(strOf(s).indexOf(strOf(v)));
+}
+export function cljstrIndexOf3(s: Value, v: Value, from: Value): Value {
+  return idxOrNil(strOf(s).indexOf(strOf(v), <i32>toF64(from)));
+}
+export function cljstrLastIndexOf2(s: Value, v: Value): Value {
+  return idxOrNil(strOf(s).lastIndexOf(strOf(v)));
+}
+export function cljstrLastIndexOf3(s: Value, v: Value, from: Value): Value {
+  return idxOrNil(strOf(s).lastIndexOf(strOf(v), <i32>toF64(from)));
+}
+export function cljstrTriml(s: Value): Value {
+  return new Str(strOf(s).trimStart());
+}
+export function cljstrTrimr(s: Value): Value {
+  return new Str(strOf(s).trimEnd());
+}
+export function cljstrTrimNewline(s: Value): Value {
+  const t = strOf(s);
+  let n = t.length;
+  while (n > 0 && (t.charCodeAt(n - 1) == 10 || t.charCodeAt(n - 1) == 13)) n--;
+  return new Str(t.substring(0, n));
+}
+export function cljstrSplitLines(s: Value): Value {
+  const t = strOf(s);
+  const out = new Array<Value>();
+  let start = 0;
+  for (let i = 0; i < t.length; i++) {
+    if (t.charCodeAt(i) == 10) {
+      const end = i > start && t.charCodeAt(i - 1) == 13 ? i - 1 : i;
+      out.push(new Str(t.substring(start, end)));
+      start = i + 1;
+    }
+  }
+  out.push(new Str(t.substring(start)));
+  return mkVec(out);
+}
+export function cljstrEscape(s: Value, m: Value): Value {
+  const t = strOf(s);
+  let out = "";
+  for (let i = 0; i < t.length; i++) {
+    const c = new Str(t.charAt(i));
+    const r = kget3(m, c, NIL);
+    out += r === NIL ? c.v : toStr(r, false);
+  }
+  return new Str(out);
+}
+export function isChar(v: Value): bool {
+  return v instanceof Str && changetype<Str>(v).v.length == 1;
+}
+export function kchar(v: Value): Value {
+  if (v instanceof Str) return v;
+  return new Str(String.fromCodePoint(<i32>toF64(v)));
 }
 export function cljstrSplit(s: Value, sep: Value): Value {
   const parts = strOf(s).split(strOf(sep));

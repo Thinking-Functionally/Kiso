@@ -126,6 +126,9 @@ const CORE_OPS: Record<string, CoreOp> = {
   'reset!': { kind: 'value', fn: 'kreset', arity: 2 },
   'int': { kind: 'value', fn: 'kint', arity: 1 },
   'long': { kind: 'value', fn: 'kint', arity: 1 },
+  'short': { kind: 'value', fn: 'kint', arity: 1 },
+  'char': { kind: 'value', fn: 'kchar', arity: 1 },
+  'char?': { kind: 'bool', fn: 'isChar', arity: 1 },
   'quot': { kind: 'value', fn: 'kquot', arity: 2 },
   'bit-shift-left': { kind: 'value', fn: 'kbitShl', arity: 2 },
   'bit-shift-right': { kind: 'value', fn: 'kbitShr', arity: 2 },
@@ -168,6 +171,14 @@ const CORE_OPS: Record<string, CoreOp> = {
   'cljstr-replace': { kind: 'value', fn: 'cljstrReplace', arity: 3 },
   'cljstr-split': { kind: 'value', fn: 'cljstrSplit', arity: 2 },
   subs: { kind: 'value', fn: 'ksubs', arity: [2, 3], sfx: true },
+  'cljstr-capitalize': { kind: 'value', fn: 'cljstrCapitalize', arity: 1 },
+  'cljstr-index-of': { kind: 'value', fn: 'cljstrIndexOf', arity: [2, 3], sfx: true },
+  'cljstr-last-index-of': { kind: 'value', fn: 'cljstrLastIndexOf', arity: [2, 3], sfx: true },
+  'cljstr-triml': { kind: 'value', fn: 'cljstrTriml', arity: 1 },
+  'cljstr-trimr': { kind: 'value', fn: 'cljstrTrimr', arity: 1 },
+  'cljstr-trim-newline': { kind: 'value', fn: 'cljstrTrimNewline', arity: 1 },
+  'cljstr-split-lines': { kind: 'value', fn: 'cljstrSplitLines', arity: 1 },
+  'cljstr-escape': { kind: 'value', fn: 'cljstrEscape', arity: 2 },
   'cljstr-join': { kind: 'value', fn: 'cljstrJoin', arity: [1, 2], sfx: true },
   'Math/abs': { kind: 'value', fn: 'kabs', arity: 1 },
   'Math/sqrt': { kind: 'value', fn: 'ksqrt', arity: 1 },
@@ -219,7 +230,7 @@ const RUNTIME_IMPORTS = [
   'println', 'print', 'pr', 'kcaptureOut', 'prn', 'prStr', 'str',
   'SetV', 'ExInfo', 'EMPTY_SET', 'mkSet', 'hashSet', 'kset', 'kdisj', 'isSet', 'isList', 'isSeq', 'items', 'klist', 'kseq', 'krest', 'knext',
   'kcons', 'kemptyOf', 'kreverse', 'kconcat', 'ktake', 'kdrop', 'kmap2', 'kmap3', 'kmapv', 'kfilter', 'kfilterv', 'kremove', 'ksome',
-  'Rec', 'Reified', 'noImpl', 'kevery', 'kinto', 'krange1', 'krange2', 'krange3', 'kapply', 'lazySeq', 'kdoall', 'kdorun', 'kiterate', 'krepeat1', 'krepeat2', 'kcycle', 'ktakeWhile', 'kdropWhile', 'kmapcat', 'krange0', 'ksort1', 'ksort2', 'ksortBy2', 'ksortBy3', 'kcompare', 'kexInfo', 'kexMessage', 'Sym', 'ksymbol1', 'ksymbol2', 'isSymbol', 'kcmpN', 'ksqrt', 'kpow', 'kfloor', 'kceil', 'katom', 'kderef', 'kreset', 'kint', 'kint', 'kquot', 'kbitShl', 'kbitShr', 'kbitAnd', 'kbitOr', 'kbitXor', 'kabs', 'kboolean', 'isInteger', 'isFloat', 'isFn', 'SortedMapV', 'sortedMap', 'sortedSet', 'sortedMapBy', 'sortedSetBy', 'ksortedMapEmptyBy', 'ksortedSetEmptyBy', 'isSortedMap', 'isSortedSet', 'isSorted', 'ksubseq3', 'ksubseq5', 'krsubseq3', 'krsubseq5', 'kmeta', 'kwithMeta', 'kresetMeta', 'kidentical', 'khash', 'krealized', 'isSequential', 'isTrue', 'isFalse', 'kname', 'knamespace', 'cljstrUpperCase', 'cljstrLowerCase', 'cljstrTrim', 'cljstrBlank', 'cljstrStartsWith', 'cljstrEndsWith', 'cljstrIncludes', 'cljstrReverse', 'cljstrReplace', 'cljstrSplit', 'Atom', 'kswap', 'ksubs2', 'ksubs3', 'cljstrJoin1', 'cljstrJoin2',  'kexData', 'restOf',
+  'Rec', 'Reified', 'noImpl', 'kevery', 'kinto', 'krange1', 'krange2', 'krange3', 'kapply', 'lazySeq', 'kdoall', 'kdorun', 'kiterate', 'krepeat1', 'krepeat2', 'kcycle', 'ktakeWhile', 'kdropWhile', 'kmapcat', 'krange0', 'ksort1', 'ksort2', 'ksortBy2', 'ksortBy3', 'kcompare', 'kexInfo', 'kexMessage', 'Sym', 'ksymbol1', 'ksymbol2', 'isSymbol', 'kcmpN', 'ksqrt', 'kpow', 'kfloor', 'kceil', 'katom', 'kderef', 'kreset', 'kint', 'kint', 'kquot', 'kbitShl', 'kbitShr', 'kbitAnd', 'kbitOr', 'kbitXor', 'kabs', 'kboolean', 'isInteger', 'isFloat', 'isFn', 'SortedMapV', 'sortedMap', 'sortedSet', 'sortedMapBy', 'sortedSetBy', 'ksortedMapEmptyBy', 'ksortedSetEmptyBy', 'isSortedMap', 'isSortedSet', 'isSorted', 'ksubseq3', 'ksubseq5', 'krsubseq3', 'krsubseq5', 'kmeta', 'kwithMeta', 'kresetMeta', 'kidentical', 'khash', 'krealized', 'isSequential', 'isTrue', 'isFalse', 'kname', 'knamespace', 'cljstrUpperCase', 'cljstrLowerCase', 'cljstrTrim', 'cljstrBlank', 'cljstrStartsWith', 'cljstrEndsWith', 'cljstrIncludes', 'cljstrReverse', 'cljstrReplace', 'cljstrSplit', 'cljstrCapitalize', 'cljstrIndexOf2', 'cljstrIndexOf3', 'cljstrLastIndexOf2', 'cljstrLastIndexOf3', 'cljstrTriml', 'cljstrTrimr', 'cljstrTrimNewline', 'cljstrSplitLines', 'cljstrEscape', 'isChar', 'kchar', 'Atom', 'kswap', 'ksubs2', 'ksubs3', 'cljstrJoin1', 'cljstrJoin2',  'kexData', 'restOf',
 ];
 
 function unsupported(construct: string, reason: string): never {
