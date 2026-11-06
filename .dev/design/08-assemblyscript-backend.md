@@ -1,6 +1,23 @@
 # 08 — AssemblyScript Backend
 
-Status: **M0–M6 complete** (lowering, emitter, numeric specialization, core collections). Next: lazy seq / `try` / `host/fetch` (see Known gaps).
+Status: **M0–M6 complete, plus parity work D20–D52** (collections, lazy seq, records/protocols, core.async, regex, read-string, arrays, multimethods). Remaining gaps are listed under *Current Support* below.
+
+## Current Support (D52)
+
+Both backends run the same `test/kiso/*_test.cljs` suite (`clojure.test`); `;; targets: js` marks JS-only files.
+
+Supported on AS: everything in the Explicit Subset except the rows below, plus
+- `clojure.string` (incl. regex-based `replace`/`split`), `clojure.set`, `clojure.walk`, `clojure.edn/read-string` and `read-string`;
+- regex via an in-wasm backtracking engine (`as-runtime/kiso-regex.ts`, D49): classes, anchors, groups, alternation, greedy/lazy quantifiers, leading `(?i)(?s)(?m)`, 5M step limit against ReDoS. Lookaround, backreferences and named groups abort at construction;
+- `satisfies?` / `instance?` resolved at compile time (closed world, D50);
+- mutable arrays (`array`, `aget`, `aset`, `alength`, `aclone`, `into-array`, `to-array`, D51);
+- `defmulti` / `defmethod` through a runtime `MultiFn` registry with `:default` (D52).
+
+Not supported on AS (compile error or abort with a clear message):
+- `try` / `catch` / `finally` / `throw`: AssemblyScript has no catchable exceptions (`ex-info` aborts). Revisit when AS supports the wasm exception-handling proposal;
+- `type`, `implements?`, `isa?` / `derive` / `prefer-method` (also missing on JS), `eval`;
+- JS interop (`js/`, `.method`, `new` of non-module types), `case` without a default;
+- keywords are not interned (equality is structural); metadata is dropped by operations that build new collections.
 
 ## M3 Outcome
 
@@ -157,9 +174,9 @@ Differential testing covers only features marked supported on both backends.
 Supported: `def`, `defn`, `fn` (multi-arity, variadic), `let`, `loop/recur`, `if`, `cond`, `case`,
 `do`, closures, destructuring, threading and other macros (expanded at compile time), list / vector /
 map / set / keyword / symbol / string / number, `atom` / `swap!` / `reset!`, protocols, `defrecord`,
-`try/catch/throw` (typed), finite seq functions (`map`, `filter`, `reduce`, `take`, `assoc`, `get`, `update`, ...).
+finite seq functions (`map`, `filter`, `reduce`, `take`, `assoc`, `get`, `update`, ...).
 
-Partial: lazy-seq (finite only), multimethod (no `derive` hierarchies), numeric semantics (overflow,
+Partial: lazy-seq, multimethod (no `derive` hierarchies), `try/catch/throw` (JS only), numeric semantics (overflow,
 big numbers), string/regex differences, `pr-str` formatting.
 
 Unsupported (compile error): `eval`, `load-string`, dynamic `require`, `js/` interop, `js-raw`, `aget` / `set!`
