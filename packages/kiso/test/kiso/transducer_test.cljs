@@ -16,6 +16,14 @@
     (is (= 6 (reduce f 0 (list 1 2 3 4 5))))
     (is (= 6 (reduce f 0 [1 2 3 4 5])))))
 
+(deftest reduce-early-termination-vector-threshold
+  (let [f (fn [acc x] (let [s (+ acc x)] (if (>= s 3) (reduced s) s)))]
+    (is (= 3 (reduce f 0 [1 2 3 4])))))
+
+(deftest reduced-wraps-value
+  (is (= 42 @(reduced 42)))
+  (is (= 20 @(ensure-reduced 20))))
+
 (deftest completing-fn
   (is (= 7 ((completing +) 3 4)))
   (is (= 42 ((completing +) 42)))

@@ -17,6 +17,11 @@
     (is (= 2 (first (next l)))))
   (is (nil? (next (list 1)))))
 
+(deftest seq-identity-and-non-nil
+  (let [l (list 1 2 3)]
+    (is (identical? l (seq l))))
+  (is (some? (seq [1 2 3]))))
+
 (deftest seq-on-vector
   (is (nil? (seq [])))
   (is (= 1 (first (seq [1 2 3]))))

@@ -2186,6 +2186,7 @@ export function katom(v: Value): Value {
 }
 export function kderef(a: Value): Value {
   if (a instanceof Atom) return changetype<Atom>(a).v;
+  if (a instanceof Reduced) return changetype<Reduced>(a).v;
   abort("deref: not an atom");
   return NIL;
 }

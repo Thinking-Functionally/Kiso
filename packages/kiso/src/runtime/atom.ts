@@ -3,6 +3,8 @@
 // Clojure atoms provide thread-safe state management.
 // In JS (single-threaded), atoms are simple mutable containers.
 
+import { Reduced } from './core.js';
+
 const ATOM_TAG = Symbol.for('kiso.atom');
 
 type WatchFn = (key: unknown, ref: Atom, oldVal: unknown, newVal: unknown) => void;
@@ -88,8 +90,9 @@ export function isAtom(x: unknown): x is Atom {
   return x instanceof Atom;
 }
 
-export function deref(ref: Atom): unknown {
-  return ref.deref();
+export function deref(ref: Atom | Reduced): unknown {
+  if (ref instanceof Reduced) return ref.value;
+  return (ref as Atom).deref();
 }
 
 export function reset_m(ref: Atom, newVal: unknown): unknown {
