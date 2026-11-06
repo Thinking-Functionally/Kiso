@@ -407,6 +407,17 @@ export class Analyzer {
         args: form.data.items.map((f) => this.quoteForm(f)),
       };
       case 'vector': return { type: 'vector', items: form.data.items.map((f) => this.quoteForm(f)) };
+      case 'set': return { type: 'set', items: form.data.items.map((f) => this.quoteForm(f)) };
+      case 'map': {
+        const items = form.data.items;
+        const keys: Node[] = [];
+        const vals: Node[] = [];
+        for (let i = 0; i + 1 < items.length; i += 2) {
+          keys.push(this.quoteForm(items[i]!));
+          vals.push(this.quoteForm(items[i + 1]!));
+        }
+        return { type: 'map', keys, vals };
+      }
       default: return lit(null, 'null');
     }
   }

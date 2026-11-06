@@ -25,7 +25,9 @@ export function false_p(x: unknown): boolean { return x === false; }
 export function boolean(x: unknown): boolean { return truthy(x); }
 export const hash_map = hashMap;
 
-export function int(x: number): number { return Math.trunc(x); }
+export function int(x: unknown): number { return typeof x === 'string' ? x.codePointAt(0)! : Math.trunc(x as number); }
+export function char(x: unknown): string { return typeof x === 'string' ? x : String.fromCodePoint(x as number); }
+export function char_p(x: unknown): boolean { return typeof x === 'string' && Array.from(x).length === 1; }
 export const long = int;
 export const short = int;
 
@@ -98,3 +100,26 @@ export function namespace(x: unknown): string | null {
   if (isKeyword(x) || isSymbol(x)) return (x as { ns: string | null }).ns ?? null;
   throw new Error('namespace: unsupported type');
 }
+
+// -- JVM-style static helpers reachable as `Character/isUpperCase`, `Integer/parseInt`, ... --
+
+const chr = (c: unknown): string => (typeof c === 'number' ? String.fromCodePoint(c) : (c as string));
+export const Character = {
+  isUpperCase: (c: unknown): boolean => { const x = chr(c); return x !== x.toLowerCase() && x === x.toUpperCase(); },
+  isLowerCase: (c: unknown): boolean => { const x = chr(c); return x !== x.toUpperCase() && x === x.toLowerCase(); },
+  isDigit: (c: unknown): boolean => /^\p{Nd}$/u.test(chr(c)),
+  isLetter: (c: unknown): boolean => /^\p{L}$/u.test(chr(c)),
+  isLetterOrDigit: (c: unknown): boolean => /^[\p{L}\p{Nd}]$/u.test(chr(c)),
+  isWhitespace: (c: unknown): boolean => /^\s$/u.test(chr(c)),
+  toUpperCase: (c: unknown): string => chr(c).toUpperCase(),
+  toLowerCase: (c: unknown): string => chr(c).toLowerCase(),
+  getNumericValue: (c: unknown): number => parseInt(chr(c), 36),
+};
+export const Integer = {
+  parseInt: (s: string, radix = 10): number => parseInt(s, radix),
+  valueOf: (x: unknown): number => (typeof x === 'string' ? parseInt(x, 10) : Math.trunc(x as number)),
+  MAX_VALUE: 2147483647,
+  MIN_VALUE: -2147483648,
+};
+export const Long = { parseLong: (s: string): number => parseInt(s, 10), valueOf: Integer.valueOf, MAX_VALUE: Number.MAX_SAFE_INTEGER, MIN_VALUE: Number.MIN_SAFE_INTEGER };
+export const Double = { parseDouble: (s: string): number => parseFloat(s), valueOf: (x: unknown): number => Number(x) };

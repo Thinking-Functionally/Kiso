@@ -1,3 +1,4 @@
+import { toArray } from '../../src/runtime/seq.js';
 import { describe, it, expect } from 'vitest';
 import {
   reduced, reduced_p, unreduced, ensure_reduced, Reduced,
@@ -120,7 +121,7 @@ describe('map transducer (1-arity)', () => {
 
   it('still works as eager 2-arity', () => {
     const result = map((x: number) => x + 1, list(1, 2, 3));
-    expect(result).toEqual(list(2, 3, 4));
+    expect(toArray(result)).toEqual([2, 3, 4]);
   });
 });
 
@@ -140,7 +141,7 @@ describe('filter transducer (1-arity)', () => {
 
   it('still works as eager 2-arity', () => {
     const result = filter((x: number) => x > 2, list(1, 2, 3, 4));
-    expect(result).toEqual(list(3, 4));
+    expect(toArray(result)).toEqual([3, 4]);
   });
 });
 
@@ -168,7 +169,7 @@ describe('take transducer (1-arity)', () => {
 
   it('still works as eager 2-arity', () => {
     const result = take(2, list(1, 2, 3, 4));
-    expect(result).toEqual(list(1, 2));
+    expect(toArray(result)).toEqual([1, 2]);
   });
 });
 

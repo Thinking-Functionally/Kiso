@@ -10,6 +10,7 @@
     "./runtime": "./dist/runtime/index.js",
     "./runtime/string": "./dist/runtime/string.js",
     "./runtime/set": "./dist/runtime/set.js",
+    "./runtime/edn": "./dist/runtime/edn.js",
     "./runtime/walk": "./dist/runtime/walk.js",
     "./runtime/sorted-map": "./dist/runtime/sorted-map.js",
     "./runtime/sorted-set": "./dist/runtime/sorted-set.js",

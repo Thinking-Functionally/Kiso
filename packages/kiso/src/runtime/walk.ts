@@ -46,7 +46,7 @@ export function walk(inner: WalkFn, outer: WalkFn, form: unknown): unknown {
     return outer(result);
   }
   // seq-able but not the above
-  const s = seq(form);
+  const s = typeof form === 'string' ? null : seq(form);
   if (s != null) {
     const items = toArray(s).map(inner);
     return outer(makeList(...items));

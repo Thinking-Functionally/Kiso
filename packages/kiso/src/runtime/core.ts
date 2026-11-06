@@ -12,6 +12,7 @@ import { isHashSet, PersistentHashSet, hashSet } from './hash-set.js';
 import { isKeyword, type Keyword } from './keyword.js';
 import { isSymbol, type Sym } from './symbol.js';
 import { equiv } from './equiv.js';
+import { LazySeq } from './lazy-seq.js';
 import { seq, first as seqFirst, next as seqNext, IndexedSeq } from './seq.js';
 import { isSortedMap, PersistentTreeMap, EMPTY_SORTED_MAP } from './sorted-map.js';
 import { isSortedSet, PersistentTreeSet, EMPTY_SORTED_SET } from './sorted-set.js';
@@ -68,10 +69,14 @@ export function dec(n: number): number { return n - 1; }
 
 // -- Comparison --
 
-export function lt(a: number, b: number): boolean { return a < b; }
-export function gt(a: number, b: number): boolean { return a > b; }
-export function lte(a: number, b: number): boolean { return a <= b; }
-export function gte(a: number, b: number): boolean { return a >= b; }
+function chain(args: number[], ok: (a: number, b: number) => boolean): boolean {
+  for (let i = 0; i + 1 < args.length; i++) if (!ok(args[i]!, args[i + 1]!)) return false;
+  return true;
+}
+export function lt(a: number, b?: number, ...r: number[]): boolean { return r.length === 0 && b !== undefined ? a < b : chain([a, ...(b === undefined ? [] : [b]), ...r], (x, y) => x < y); }
+export function gt(a: number, b?: number, ...r: number[]): boolean { return r.length === 0 && b !== undefined ? a > b : chain([a, ...(b === undefined ? [] : [b]), ...r], (x, y) => x > y); }
+export function lte(a: number, b?: number, ...r: number[]): boolean { return r.length === 0 && b !== undefined ? a <= b : chain([a, ...(b === undefined ? [] : [b]), ...r], (x, y) => x <= y); }
+export function gte(a: number, b?: number, ...r: number[]): boolean { return r.length === 0 && b !== undefined ? a >= b : chain([a, ...(b === undefined ? [] : [b]), ...r], (x, y) => x >= y); }
 
 export function eq(a: unknown, b: unknown): boolean {
   return equiv(a, b);
@@ -131,7 +136,9 @@ export function count(coll: unknown): number {
   if (isHashSet(coll)) return (coll as PersistentHashSet).count;
   if (isSortedMap(coll)) return (coll as PersistentTreeMap).count;
   if (isSortedSet(coll)) return (coll as PersistentTreeSet).count;
-  return 0;
+  let c = 0;
+  for (let q = seq(coll); q !== null; q = seqNext(q)) c++;
+  return c;
 }
 
 export function conj(coll: unknown, ...items: unknown[]): unknown {
@@ -245,14 +252,19 @@ export function map(f_: unknown, ...args: unknown[]): unknown {
       return rf(rfArgs[0], f(rfArgs[1]));
     };
   }
-  const coll = args[0];
-  const result: unknown[] = [];
-  let s = seq(coll);
-  while (s !== null) {
-    result.push(f(seqFirst(s)));
-    s = seqNext(s);
+  if (args.length === 1) {
+    const step1 = (c: unknown): unknown => new LazySeq(() => {
+      const sq = seq(c);
+      return sq === null ? null : listCons(f(seqFirst(sq)), step1(seqNext(sq)) as any);
+    });
+    return step1(args[0]);
   }
-  return list(...result);
+  const stepN = (cs: unknown[]): unknown => new LazySeq(() => {
+    const ss = cs.map((c) => seq(c));
+    if (ss.some((x) => x === null)) return null;
+    return listCons(f(...ss.map((x) => seqFirst(x))), stepN(ss.map((x) => seqNext(x))) as any);
+  });
+  return stepN(args);
 }
 
 export function filter(pred_: unknown, ...args: unknown[]): unknown {
@@ -263,15 +275,14 @@ export function filter(pred_: unknown, ...args: unknown[]): unknown {
       return isTruthy(pred(rfArgs[1])) ? rf(rfArgs[0], rfArgs[1]) : rfArgs[0];
     };
   }
-  const coll = args[0];
-  const result: unknown[] = [];
-  let s = seq(coll);
-  while (s !== null) {
-    const v = seqFirst(s);
-    if (isTruthy(pred(v))) result.push(v);
-    s = seqNext(s);
-  }
-  return list(...result);
+  const step = (c: unknown): unknown => new LazySeq(() => {
+    for (let sq = seq(c); sq !== null; sq = seqNext(sq)) {
+      const v = seqFirst(sq);
+      if (isTruthy(pred(v))) return listCons(v, step(seqNext(sq)) as any);
+    }
+    return null;
+  });
+  return step(args[0]);
 }
 
 export function reduce(f: (...args: unknown[]) => unknown, ...args: unknown[]): unknown {
@@ -495,47 +506,39 @@ export function take(n_: unknown, ...args: unknown[]): unknown {
       };
     };
   }
-  const coll = args[0];
-  const result: unknown[] = [];
-  let s = seq(coll);
-  let i = 0;
-  while (s !== null && i < n) {
-    result.push(seqFirst(s));
-    s = seqNext(s);
-    i++;
-  }
-  return list(...result);
+  const step = (c: unknown, k: number): unknown => new LazySeq(() => {
+    if (k <= 0) return null;
+    const sq = seq(c);
+    return sq === null ? null : listCons(seqFirst(sq), step(seqNext(sq), k - 1) as any);
+  });
+  return step(args[0], n);
 }
 
 export function drop(n: number, coll: unknown): unknown {
-  let s = seq(coll);
-  let i = 0;
-  while (s !== null && i < n) { s = seqNext(s); i++; }
-  const result: unknown[] = [];
-  while (s !== null) { result.push(seqFirst(s)); s = seqNext(s); }
-  return list(...result);
+  return new LazySeq(() => {
+    let sq = seq(coll);
+    for (let i = 0; sq !== null && i < n; i++) sq = seqNext(sq);
+    return sq;
+  });
 }
 
 export function take_while(pred_: unknown, coll: unknown): unknown {
   const pred = toFn(pred_);
-  const result: unknown[] = [];
-  let s = seq(coll);
-  while (s !== null) {
-    const v = seqFirst(s);
-    if (!isTruthy(pred(v))) break;
-    result.push(v);
-    s = seqNext(s);
-  }
-  return list(...result);
+  const step = (c: unknown): unknown => new LazySeq(() => {
+    const sq = seq(c);
+    if (sq === null || !isTruthy(pred(seqFirst(sq)))) return null;
+    return listCons(seqFirst(sq), step(seqNext(sq)) as any);
+  });
+  return step(coll);
 }
 
 export function drop_while(pred_: unknown, coll: unknown): unknown {
   const pred = toFn(pred_);
-  let s = seq(coll);
-  while (s !== null && isTruthy(pred(seqFirst(s)))) { s = seqNext(s); }
-  const result: unknown[] = [];
-  while (s !== null) { result.push(seqFirst(s)); s = seqNext(s); }
-  return list(...result);
+  return new LazySeq(() => {
+    let sq = seq(coll);
+    while (sq !== null && isTruthy(pred(seqFirst(sq)))) sq = seqNext(sq);
+    return sq;
+  });
 }
 
 export function some(pred_: unknown, coll: unknown): unknown {
@@ -608,6 +611,12 @@ export function reverse(coll: unknown): unknown {
 
 export function range(...args: number[]): unknown {
   let start = 0, end: number, step = 1;
+  if (args.length === 0 || (args.length >= 2 && args[1] === Infinity)) {
+    const from = args.length === 0 ? 0 : args[0]!;
+    const by = args.length === 3 ? args[2]! : 1;
+    const gen = (i: number): unknown => new LazySeq(() => listCons(i, gen(i + by) as any));
+    return gen(from);
+  }
   if (args.length === 1) { end = args[0]!; }
   else if (args.length === 2) { start = args[0]!; end = args[1]!; }
   else { start = args[0]!; end = args[1]!; step = args[2]!; }
@@ -617,15 +626,24 @@ export function range(...args: number[]): unknown {
   return list(...result);
 }
 
-export function repeat(n: number, x: unknown): unknown {
+export function repeat(n: unknown, x?: unknown): unknown {
+  if (x === undefined) {
+    const gen = (): unknown => new LazySeq(() => listCons(n, gen() as any));
+    return gen();
+  }
   const result: unknown[] = [];
-  for (let i = 0; i < n; i++) result.push(x);
+  for (let i = 0; i < (n as number); i++) result.push(x);
   return list(...result);
 }
 
-export function repeatedly(n: number, f: () => unknown): unknown {
+export function repeatedly(n: unknown, f?: () => unknown): unknown {
+  if (f === undefined) {
+    const g = n as () => unknown;
+    const gen = (): unknown => new LazySeq(() => listCons(g(), gen() as any));
+    return gen();
+  }
   const result: unknown[] = [];
-  for (let i = 0; i < n; i++) result.push(f());
+  for (let i = 0; i < (n as number); i++) result.push(f());
   return list(...result);
 }
 
@@ -818,40 +836,41 @@ export function empty_p(coll: unknown): boolean {
 }
 
 export function concat(...colls: unknown[]): unknown {
-  const items: unknown[] = [];
-  for (const coll of colls) {
-    let s = seq(coll);
-    while (s !== null) {
-      items.push(seqFirst(s));
-      s = seqNext(s);
-    }
-  }
-  if (items.length === 0) return EMPTY_LIST;
-  return list(...items);
+  const step = (i: number, c: unknown): unknown => new LazySeq(() => {
+    let sq = seq(c);
+    let k = i;
+    while (sq === null && k + 1 < colls.length) { k++; sq = seq(colls[k]); }
+    if (sq === null) return null;
+    return listCons(seqFirst(sq), step(k, seqNext(sq)) as any);
+  });
+  return colls.length === 0 ? EMPTY_LIST : step(0, colls[0]);
 }
 
 // -- Seq operations batch 2 --
 
-export function mapcat(f_: unknown, coll: unknown): unknown {
-  const f = toFn(f_);
-  const result: unknown[] = [];
-  let s = seq(coll);
-  while (s !== null) {
-    const mapped = f(seqFirst(s));
-    let ms = seq(mapped);
-    while (ms !== null) { result.push(seqFirst(ms)); ms = seqNext(ms); }
-    s = seqNext(s);
-  }
-  return list(...result);
+export function mapcat(f_: unknown, ...colls: unknown[]): unknown {
+  const mapped = map(f_, ...colls);
+  const step = (c: unknown, inner: unknown): unknown => new LazySeq(() => {
+    let sq = seq(inner);
+    let outer = c;
+    while (sq === null) {
+      const o = seq(outer);
+      if (o === null) return null;
+      sq = seq(seqFirst(o));
+      outer = seqNext(o);
+    }
+    return listCons(seqFirst(sq), step(outer, seqNext(sq)) as any);
+  });
+  return step(mapped, null);
 }
 
 export function map_indexed(f_: unknown, coll: unknown): unknown {
   const f = toFn(f_);
-  const result: unknown[] = [];
-  let s = seq(coll);
-  let i = 0;
-  while (s !== null) { result.push(f(i++, seqFirst(s))); s = seqNext(s); }
-  return list(...result);
+  const step = (c: unknown, i: number): unknown => new LazySeq(() => {
+    const sq = seq(c);
+    return sq === null ? null : listCons(f(i, seqFirst(sq)), step(seqNext(sq), i + 1) as any);
+  });
+  return step(coll, 0);
 }
 
 export function remove(pred_: unknown, coll: unknown): unknown {
@@ -861,14 +880,14 @@ export function remove(pred_: unknown, coll: unknown): unknown {
 
 export function keep(f_: unknown, coll: unknown): unknown {
   const f = toFn(f_);
-  const result: unknown[] = [];
-  let s = seq(coll);
-  while (s !== null) {
-    const v = f(seqFirst(s));
-    if (v !== null && v !== undefined) result.push(v);
-    s = seqNext(s);
-  }
-  return list(...result);
+  const step = (c: unknown): unknown => new LazySeq(() => {
+    for (let sq = seq(c); sq !== null; sq = seqNext(sq)) {
+      const v = f(seqFirst(sq));
+      if (v !== null && v !== undefined) return listCons(v, step(seqNext(sq)) as any);
+    }
+    return null;
+  });
+  return step(coll);
 }
 
 export function flatten(coll: unknown): unknown {
@@ -888,16 +907,14 @@ export function flatten(coll: unknown): unknown {
 }
 
 export function distinct(coll: unknown): unknown {
-  const seen = new Set<unknown>();
-  const result: unknown[] = [];
-  let s = seq(coll);
-  while (s !== null) {
-    const v = seqFirst(s);
-    const key = typeof v === 'object' ? JSON.stringify(v) : v;
-    if (!seen.has(key)) { seen.add(key); result.push(v); }
-    s = seqNext(s);
-  }
-  return list(...result);
+  const step = (c: unknown, seen: PersistentHashSet): unknown => new LazySeq(() => {
+    for (let sq = seq(c); sq !== null; sq = seqNext(sq)) {
+      const v = seqFirst(sq);
+      if (!seen.has(v)) return listCons(v, step(seqNext(sq), seen.conj(v)) as any);
+    }
+    return null;
+  });
+  return step(coll, hashSet());
 }
 
 export function dedupe(coll: unknown): unknown {
@@ -913,16 +930,16 @@ export function dedupe(coll: unknown): unknown {
 }
 
 export function interleave(...colls: unknown[]): unknown {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const seqs: any[] = colls.map(c => seq(c));
-  const result: unknown[] = [];
-  while (seqs.every((s: any) => s !== null)) {
-    for (let i = 0; i < seqs.length; i++) {
-      result.push(seqFirst(seqs[i]));
-      seqs[i] = seqNext(seqs[i]);
-    }
-  }
-  return list(...result);
+  const step = (cs: unknown[]): unknown => new LazySeq(() => {
+    const ss = cs.map((c) => seq(c));
+    if (ss.length === 0 || ss.some((x) => x === null)) return null;
+    const items = ss.map((x) => seqFirst(x));
+    const tail = step(ss.map((x) => seqNext(x)));
+    let out: unknown = tail;
+    for (let i = items.length - 1; i >= 0; i--) out = listCons(items[i], out as any);
+    return out;
+  });
+  return step(colls);
 }
 
 export function interpose(sep: unknown, coll: unknown): unknown {
@@ -1087,15 +1104,14 @@ export function take_last(n: number, coll: unknown): unknown {
 }
 
 export function take_nth(n: number, coll: unknown): unknown {
-  const result: unknown[] = [];
-  let s = seq(coll);
-  let i = 0;
-  while (s !== null) {
-    if (i % n === 0) result.push(seqFirst(s));
-    s = seqNext(s);
-    i++;
-  }
-  return list(...result);
+  const step = (c: unknown): unknown => new LazySeq(() => {
+    const sq = seq(c);
+    if (sq === null) return null;
+    let rest: unknown = sq;
+    for (let i = 0; i < n && rest !== null; i++) rest = seqNext(rest);
+    return listCons(seqFirst(sq), step(rest) as any);
+  });
+  return step(coll);
 }
 
 export function drop_last(n: number, coll: unknown): unknown {
@@ -1118,7 +1134,15 @@ export function keep_indexed(f_: unknown, coll: unknown): unknown {
   return list(...result);
 }
 
-export function reductions(f: (...args: unknown[]) => unknown, init: unknown, coll: unknown): unknown {
+export function reductions(f: (...args: unknown[]) => unknown, ...rest: unknown[]): unknown {
+  let init: unknown, coll: unknown;
+  if (rest.length === 1) {
+    const s0 = seq(rest[0]);
+    if (s0 === null) return list(f());
+    init = seqFirst(s0);
+    coll = seqNext(s0);
+  } else { init = rest[0]; coll = rest[1]; }
+  f = toFn(f);
   const result: unknown[] = [init];
   let acc = init;
   let s = seq(coll);
@@ -1132,7 +1156,6 @@ export function reductions(f: (...args: unknown[]) => unknown, init: unknown, co
 
 // -- Lazy generators (finite take required) --
 
-import { LazySeq } from './lazy-seq.js';
 
 export function iterate(f: (x: unknown) => unknown, x: unknown): unknown {
   function gen(val: unknown): unknown {

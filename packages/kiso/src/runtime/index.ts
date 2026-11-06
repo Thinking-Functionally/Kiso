@@ -98,3 +98,5 @@ export { PersistentTreeMap, isSortedMap, EMPTY_SORTED_MAP } from './sorted-map.j
 export { PersistentTreeSet, isSortedSet, EMPTY_SORTED_SET } from './sorted-set.js';
 export { transient, persistent_m, conj_m, assoc_m, dissoc_m, disj_m } from './transient.js';
 export * from './extras.js';
+export { LazySeq } from './lazy-seq.js';
+export { read_string } from './edn.js';

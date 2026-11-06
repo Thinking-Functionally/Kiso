@@ -9,7 +9,7 @@ import { hashSet } from '../../src/runtime/hash-set.js';
 import { list, EMPTY_LIST } from '../../src/runtime/list.js';
 import { symbol as runtimeSymbol } from '../../src/runtime/symbol.js';
 import { seq, first, next as seqNext } from '../../src/runtime/seq.js';
-import { get, count } from '../../src/runtime/core.js';
+import { get, count, nth } from '../../src/runtime/core.js';
 
 const analyzer = new Analyzer();
 
@@ -17,7 +17,7 @@ const analyzer = new Analyzer();
 // new Function() is safe here: only compiler-generated code from controlled test inputs is evaluated.
 const runtime: Record<string, unknown> = {
   vector, keyword, hashMap, hashSet, list, EMPTY_LIST,
-  symbol: runtimeSymbol, seq, first, next: seqNext, get, count,
+  symbol: runtimeSymbol, seq, first, next: seqNext, get, count, nth,
 };
 const runtimeKeys = Object.keys(runtime);
 const runtimeVals = Object.values(runtime);

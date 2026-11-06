@@ -28,6 +28,7 @@ type EmitCtx = {
   autoImports?: Map<string, string>; // ns → auto-alias for hook-referenced namespaces
   declared?: Set<string>; // module-level names already declared with `let`
   renames?: Map<string, string>; // in-scope local name → JS identifier (set when a binding shadows)
+  valueDefs?: Set<string>; // munged top-level defs whose init is not a fn (may hold a map/vector/set used as IFn)
   shadowNames?: Set<string>; // munged module-level names (user defs, runtime imports) a local must not shadow in its own init
 };
 
@@ -65,7 +66,7 @@ function emitNode(node: Node, ctx: EmitCtx): string {
       if (slashIdx > 0) {
         const ns = node.name.slice(0, slashIdx);
         const local = node.name.slice(slashIdx + 1);
-        if (JS_GLOBALS.has(ns)) return `${ns}.${local}`;
+        if (JS_GLOBALS.has(ns) || RUNTIME_CLASSES.has(ns)) return `${ns}.${local}`;
         const alias = ctx.nsAliases?.get(ns);
         if (alias) return `${alias}.${munge(local)}`;
         // Check if ns is itself an alias (e.g. su/mount where su is alias for su.core)
@@ -179,12 +180,20 @@ export function emitModuleWithMappings(nodes: Node[], hooks?: Map<string, Codege
   const autoImports = new Map<string, string>();
   const shadowNames = new Set<string>([...userDefs, ...runtimeImports]);
   const declared = new Set<string>();
-  const ctx: EmitCtx = { loopBindings: null, nsAliases, indent: 0, hooks, runtimeAliases, autoImports, shadowNames, declared };
+  const valueDefs = new Set<string>();
+  for (const node of nodes) {
+    if (node.type === 'def' && node.init && node.init.type !== 'fn') valueDefs.add(munge(node.name));
+  }
+  const ctx: EmitCtx = { loopBindings: null, nsAliases, indent: 0, hooks, runtimeAliases, autoImports, shadowNames, declared, valueDefs };
 
   // Extract the current ns name for resolving auto-import paths
   const currentNs = nodes.find(n => n.type === 'ns')?.name ?? '';
 
   const allSegments = nodes.map(n => emitTopLevelCtx(n, ctx));
+  if (!runtimeImports.includes('ifn') && allSegments.some((seg) => seg.includes('ifn('))) {
+    runtimeImports.push('ifn');
+    runtimeImports.sort();
+  }
   // Track which node indices produced non-empty output
   const segments: string[] = [];
   const nodeIndices: number[] = [];
@@ -338,7 +347,7 @@ function emitInvoke(node: { fn: Node; args: Node[] }, ctx: EmitCtx): string {
     return `invoke(${emitNode(node.fn, ctx)}, ${node.args.map((n) => emitNode(n, ctx)).join(', ')})`;
   }
   // A local may hold a map/set/vector/keyword-like IFn; ifn() passes functions through
-  const callee = node.fn.type === 'var-ref' && node.fn.local ? `ifn(${emitNode(node.fn, ctx)})` : emitNode(node.fn, ctx);
+  const callee = (node.fn.type === 'var-ref' && (node.fn.local || ctx.valueDefs?.has(munge(node.fn.name)))) || node.fn.type === 'invoke' ? `ifn(${emitNode(node.fn, ctx)})` : emitNode(node.fn, ctx);
   return `${callee}(${node.args.map((n) => emitNode(n, ctx)).join(', ')})`;
 }
 
@@ -443,13 +452,13 @@ function emitFn(node: { name: string | null; arities: FnArity[] }, outerCtx: Emi
     const ctx: EmitCtx = { ...scopeWith(deeper(caseCtx), [...arity.params, ...(arity.restParam ? [arity.restParam] : [])]), loopBindings: arity.params };
     const body = emitFnBody(arity.body, ctx, bi);
     if (arity.restParam) {
-      return `${ci}default: {\n${bi}let [${params}${params ? ', ' : ''}...${munge(arity.restParam)}] = args;\n${bi}${body}\n${ci}}`;
+      return `${ci}default: {\n${bi}let [${params}${params ? ', ' : ''}...${munge(arity.restParam)}] = __args;\n${bi}${body}\n${ci}}`;
     }
-    return `${ci}case ${n}: {\n${bi}let [${params}] = args;\n${bi}${body}\n${ci}}`;
+    return `${ci}case ${n}: {\n${bi}let [${params}] = __args;\n${bi}${body}\n${ci}}`;
   }).join('\n');
 
   const si = ind(inner);
-  return `function ${name}(...args) {\n${si}switch(args.length) {\n${cases}\n${si}}\n${ind(outerCtx)}}`;
+  return `function ${name}(...__args) {\n${si}switch(__args.length) {\n${cases}\n${si}}\n${ind(outerCtx)}}`;
 }
 
 function containsRecur(node: unknown): boolean {
@@ -839,7 +848,7 @@ const RUNTIME_FUNCTIONS = new Set([
   // extras.ts
   'vec', 'mapv', 'vector?', 'list?', 'true?', 'false?', 'boolean', 'hash-map', 'int', 'long', 'short',
   'bit-and', 'bit-or', 'bit-xor', 'bit-not', 'bit-shift-left', 'bit-shift-right', 'distinct?', 'disj',
-  'ifn', 'min-key', 'max-key', 'split-at', 'split-with', 'sequence', 'rseq', 'shuffle', 'key', 'val', 'namespace',
+  'ifn', 'LazySeq', 'read-string', 'char', 'char?', 'min-key', 'max-key', 'split-at', 'split-with', 'sequence', 'rseq', 'shuffle', 'key', 'val', 'namespace',
 ]);
 
 /** Scan AST for runtime function usage and return needed import names. */
@@ -885,6 +894,8 @@ function scanNodeForRuntime(node: Node, used: Set<string>): void {
       if (!node.local && RUNTIME_FUNCTIONS.has(node.name)) {
         used.add(munge(node.name));
       }
+      const slash = node.name.indexOf('/');
+      if (!node.local && slash > 0 && RUNTIME_CLASSES.has(node.name.slice(0, slash))) used.add(node.name.slice(0, slash));
       break;
     }
     case 'invoke': {
@@ -897,7 +908,7 @@ function scanNodeForRuntime(node: Node, used: Set<string>): void {
       if (node.fn.type === 'set' || node.fn.type === 'map' || node.fn.type === 'vector') {
         used.add('invoke');
       }
-      if (node.fn.type === 'var-ref' && node.fn.local) used.add('ifn');
+      if ((node.fn.type === 'var-ref' && node.fn.local) || node.fn.type === 'invoke') used.add('ifn');
       scanNodeForRuntime(node.fn, used);
       for (const a of node.args) scanNodeForRuntime(a, used);
       break;
@@ -983,6 +994,7 @@ function scanNodeForRuntime(node: Node, used: Set<string>): void {
 
 // -- Name Munging --
 
+const RUNTIME_CLASSES = new Set(['Character', 'Integer', 'Long', 'Double']);
 const JS_GLOBALS = new Set(['Math', 'JSON', 'Number', 'String', 'Object', 'Array', 'Date', 'Promise', 'Symbol', 'Reflect', 'BigInt']);
 
 const JS_RESERVED = new Set([

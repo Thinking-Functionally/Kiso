@@ -56,6 +56,10 @@ export function seq(coll: Seqable): unknown {
     return coll.count === 0 ? null : new IndexedSeq(coll, 0);
   }
 
+  if (typeof coll === 'string') {
+    return coll.length === 0 ? null : new IndexedSeq(Array.from(coll), 0);
+  }
+
   if (Array.isArray(coll)) {
     return coll.length === 0 ? null : new IndexedSeq(coll, 0);
   }
@@ -126,6 +130,7 @@ export function next(coll: Seqable): unknown {
 
   if (isList(coll)) {
     const r = listRest(coll);
+    if (!isList(r)) return seq(r);
     return listCount(r) === 0 ? null : r;
   }
 
