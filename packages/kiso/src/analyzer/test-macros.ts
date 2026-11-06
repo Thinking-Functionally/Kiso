@@ -44,7 +44,11 @@ function assertion(form: Form): Form {
 
 TEST_MACROS.set('is', (items) => assertion(items[1]!));
 TEST_MACROS.set('testing', (items) => list(sym('do'), ...items.slice(2), makeInt(0)));
-TEST_MACROS.set('deftest', (items) => list(sym('defn'), items[1]!, makeVector([]), ...items.slice(2)));
+// The `CLJT begin` line lets a runner attribute the assertions that follow to this test.
+TEST_MACROS.set('deftest', (items) => {
+  const name = (items[1]!.data as { name: string }).name;
+  return list(sym('defn'), items[1]!, makeVector([]), say('begin', makeStr(name)), ...items.slice(2));
+});
 TEST_MACROS.set('run-tests', () => makeInt(0));
 TEST_MACROS.set('are', (items) => {
   const names = (items[1]!.data as { items: Form[] }).items;
