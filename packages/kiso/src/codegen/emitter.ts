@@ -580,6 +580,7 @@ function emitReify(node: ReifyNode, ctx: EmitCtx): string {
 
 function emitExtendType(node: ExtendTypeNode, ctx: EmitCtx): string {
   const target = emitNode(node.target, ctx);
+  const isNil = node.target.type === 'literal' && node.target.value === null;
   const stmts: string[] = [];
   for (const impl of node.protocols) {
     const protoVar = emitNode(impl.protocol, ctx);
@@ -587,7 +588,9 @@ function emitExtendType(node: ExtendTypeNode, ctx: EmitCtx): string {
       const mParams = m.params.slice(1).map(munge); // skip 'this'
       const self = m.params[0] ? munge(m.params[0]) : 'this_';
       const body = emitNode(m.body, scopeWith(ctx, m.params));
-      stmts.push(`${target}.prototype[${protoVar}.methods.${m.name}] = function(${mParams.join(', ')}) { const ${self} = this; return ${body}; }`);
+      const fnJs = `function(${mParams.join(', ')}) { const ${self} = this; return ${body}; }`;
+      if (isNil) stmts.push(`(${protoVar}.nil ??= {})[${protoVar}.methods.${m.name}] = ${fnJs}`);
+      else stmts.push(`${target}.prototype[${protoVar}.methods.${m.name}] = ${fnJs}`);
     }
   }
   return `(${stmts.join(', ')})`;

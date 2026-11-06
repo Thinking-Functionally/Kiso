@@ -1469,9 +1469,10 @@ export function sorted_p(x: unknown): boolean {
 
 // Protocol methods live under per-protocol Symbols on prototypes (extend-type, deftype, defrecord).
 export function satisfies_p(protocol: unknown, x: unknown): boolean {
-  const methods = (protocol as { methods?: Record<string, symbol> } | null)?.methods;
-  if (!methods || x == null) return false;
-  const target = Object(x) as Record<symbol, unknown>;
+  const proto = protocol as { methods?: Record<string, symbol>; nil?: Record<symbol, unknown> } | null;
+  const methods = proto?.methods;
+  if (!methods) return false;
+  const target = (x == null ? (proto.nil ?? {}) : Object(x)) as Record<symbol, unknown>;
   return Object.values(methods).some((sym) => typeof target[sym] === 'function');
 }
 

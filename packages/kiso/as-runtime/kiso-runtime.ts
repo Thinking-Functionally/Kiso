@@ -881,6 +881,10 @@ export class Reified extends Value {
   ) {
     super();
   }
+  hasProtocol(prefix: string): bool {
+    for (let i = 0; i < this.keys.length; i++) if (this.keys[i].startsWith(prefix)) return true;
+    return false;
+  }
   find(key: string): Fn | null {
     for (let i = 0; i < this.keys.length; i++) if (this.keys[i] == key) return this.fns[i];
     return null;

@@ -175,6 +175,8 @@ const CORE_OPS: Record<string, CoreOp> = {
   're-matches': { kind: 'value', fn: 'kreMatches', arity: 2 },
   're-seq': { kind: 'value', fn: 'kreSeq', arity: 2 },
   're-pattern': { kind: 'value', fn: 'krePattern', arity: 1 },
+  'satisfies?': { kind: 'bool', fn: 'satisfiesTest', arity: 2 },
+  'instance?': { kind: 'bool', fn: 'instanceTest', arity: 2 },
   'regexp?': { kind: 'bool', fn: 'isRegex', arity: 1 },
   subs: { kind: 'value', fn: 'ksubs', arity: [2, 3], sfx: true },
   'cljstr-capitalize': { kind: 'value', fn: 'cljstrCapitalize', arity: 1 },
@@ -537,6 +539,34 @@ class Emitter {
     return this.constant(key, `new ${cls}()`);
   }
 
+  private satUsed = new Set<string>();
+
+  /** `satisfies?` / `instance?` are resolved at compile time against the closed world of types and protocols. */
+  private typeTest(name: string, args: LExpr[]): string | null {
+    const head = args[0];
+    if ((name !== 'satisfies?' && name !== 'instance?') || args.length !== 2 || head?.type !== 'var' || head.kind !== 'global') return null;
+    if (name === 'satisfies?') {
+      if (!this.protocols.has(head.name)) return null;
+      this.satUsed.add(head.name);
+      return `SAT_${mangle(head.name)}(${this.expr(args[1]!)})`;
+    }
+    const user = this.types.get(head.name);
+    if (user) return `(${this.expr(args[1]!)} instanceof ${user.cls})`;
+    const builtin = BUILTIN_TARGETS[head.name];
+    if (builtin && builtin.kind === 'test') return builtin.test(this.expr(args[1]!));
+    return null;
+  }
+
+  private satFn(protocol: string): string[] {
+    const tests: string[] = [];
+    for (const i of this.impls.filter((x) => x.protocol === protocol)) {
+      if (i.target.kind === 'default') return [`function SAT_${mangle(protocol)}(x: Value): bool {`, '  return x !== NIL;', '}'];
+      tests.push(i.target.kind === 'user' ? `x instanceof ${i.target.cls}` : i.target.test('x'));
+    }
+    tests.push(`(x instanceof Reified && changetype<Reified>(x).hasProtocol(${JSON.stringify(protocol + '/')}))`);
+    return [`function SAT_${mangle(protocol)}(x: Value): bool {`, `  return ${[...new Set(tests)].join(' || ')};`, '}'];
+  }
+
   private coreOpFor(e: LExpr): { name: string; op: string } | null {
     if (e.type === 'var' && e.kind === 'global' && !this.globals.has(e.name)) return { name: e.name, op: e.name };
     return null;
@@ -601,6 +631,9 @@ class Emitter {
         if (core.op === '=' && e.args.length === 2 && this.numTyped(e.args[0]!) && this.numTyped(e.args[1]!)) {
           return `(${this.fexpr(e.args[0]!)} == ${this.fexpr(e.args[1]!)})`;
         }
+        const tt = this.typeTest(core.op, e.args);
+        if (tt) return tt;
+        if (core.op === 'satisfies?' || core.op === 'instance?') return `truthy(${this.expr(e)})`;
         const op = CORE_OPS[core.op];
         if (op && op.kind === 'bool' && this.arityOk(op, e.args.length)) {
           return `${op.fn}(${this.args(e.args).join(', ')})`;
@@ -648,6 +681,11 @@ class Emitter {
   }
 
   private coreCall(name: string, args: LExpr[]): string {
+    if (name === 'satisfies?' || name === 'instance?') {
+      const tt = this.typeTest(name, args);
+      if (tt) return `bool_(${tt})`;
+      return unsupported(`(${name} …)`, name === 'satisfies?' ? 'first argument must be a protocol defined in this module' : 'first argument must be a deftype/defrecord of this module or a built-in type name');
+    }
     const a = this.args(args);
     switch (name) {
       case '+':
@@ -909,6 +947,7 @@ class Emitter {
     const init = this.stmts(this.mod.body, '  ');
     const typeClasses = [...this.types.values()].flatMap((t) => [...this.typeClass(t), '']);
     const protoClasses = [...this.protoFns].flatMap(([g, p]) => [...this.protocolClass(g, p.protocol, p.method), '']);
+    const satFns = [...this.satUsed].flatMap((p) => [...this.satFn(p), '']);
     const wrappers = [...exports.flatMap((n) => [...this.exportWrapper(n), '']), ...(worker ? this.workerEntry(worker) : [])];
     const header = [
       `import { ${RUNTIME_IMPORTS.join(', ')} } from "${RUNTIME_MODULE}";`,
@@ -928,6 +967,7 @@ class Emitter {
       ...fnClasses,
       ...typeClasses,
       ...protoClasses,
+      ...satFns,
       'function __kiso_init(): void {',
       ...init,
       '}',
