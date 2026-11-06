@@ -71,6 +71,7 @@ export {
   // Batch 4: numeric equality, regex, printing, interop, misc
   num_eq,
   re_pattern,
+  regexp_p,
   pr_str, prn_str, print_str, println_str,
   array, aclone, js_delete,
   hash,

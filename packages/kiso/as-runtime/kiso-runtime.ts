@@ -4,6 +4,8 @@
 // Value model (D18): every Kiso value is a `Value` heap object. Singletons for
 // nil/true/false so truthiness and identity checks are pointer comparisons.
 
+import { Regex } from "./kiso-regex";
+
 export abstract class Value {}
 
 export class Nil extends Value {}
@@ -1186,6 +1188,7 @@ export function toStr(v: Value, readable: bool): string {
     }
     return out + "}";
   }
+  if (v instanceof Re) return readable ? "#\"" + changetype<Re>(v).r.source + "\"" : changetype<Re>(v).r.source;
   if (v instanceof Reified) return "#object[reify]";
   if (v === TRUE) return "true";
   if (v === FALSE) return "false";
@@ -2252,9 +2255,7 @@ export function cljstrReverse(s: Value): Value {
   for (let i = t.length - 1; i >= 0; i--) out += t.charAt(i);
   return new Str(out);
 }
-export function cljstrReplace(s: Value, a: Value, b: Value): Value {
-  return new Str(strOf(s).replaceAll(strOf(a), strOf(b)));
-}
+
 export function cljstrJoin1(c: Value): Value {
   return cljstrJoin2(new Str(""), c);
 }
@@ -2330,12 +2331,6 @@ export function isChar(v: Value): bool {
 export function kchar(v: Value): Value {
   if (v instanceof Str) return v;
   return new Str(String.fromCodePoint(<i32>toF64(v)));
-}
-export function cljstrSplit(s: Value, sep: Value): Value {
-  const parts = strOf(s).split(strOf(sep));
-  const out = new Array<Value>();
-  for (let i = 0; i < parts.length; i++) out.push(new Str(parts[i]));
-  return mkVec(out);
 }
 
 export function ksqrt(a: Value): Value {
@@ -2503,4 +2498,167 @@ export function khash(v: Value): Value {
 export function krealized(v: Value): bool {
   if (v instanceof LazySeq) return changetype<LazySeq>(v).done;
   return true;
+}
+
+
+// -- Regex (D49) -------------------------------------------------------------
+
+export class Re extends Value {
+  constructor(public r: Regex) {
+    super();
+  }
+}
+export function kreCompile(src: string): Value {
+  return new Re(new Regex(src));
+}
+export function krePattern(v: Value): Value {
+  if (v instanceof Re) return v;
+  return new Re(new Regex(strOf(v)));
+}
+export function isRegex(v: Value): bool {
+  return v instanceof Re;
+}
+function reOf(v: Value): Regex {
+  if (v instanceof Re) return changetype<Re>(v).r;
+  abort("expected a regex");
+  return new Regex("");
+}
+function groupVal(r: Regex, s: string, i: i32): Value {
+  const a = r.groupStart(i);
+  const b = r.groupEnd(i);
+  return a < 0 || b < 0 ? NIL : new Str(s.substring(a, b));
+}
+// Last successful match as a string (no groups) or a vector [whole group1 ...].
+function matchResult(r: Regex, s: string): Value {
+  if (r.ngroups == 0) return groupVal(r, s, 0);
+  const out = new Array<Value>();
+  for (let i = 0; i <= r.ngroups; i++) out.push(groupVal(r, s, i));
+  return mkVec(out);
+}
+export function kreFind(re: Value, s: Value): Value {
+  const r = reOf(re);
+  const t = strOf(s);
+  return r.search(t, 0) ? matchResult(r, t) : NIL;
+}
+export function kreMatches(re: Value, s: Value): Value {
+  const r = reOf(re);
+  const t = strOf(s);
+  return r.matchAt(t, 0, true) ? matchResult(r, t) : NIL;
+}
+export function kreSeq(re: Value, s: Value): Value {
+  const r = reOf(re);
+  const t = strOf(s);
+  const out = new Array<Value>();
+  let pos: i32 = 0;
+  while (pos <= t.length && r.search(t, pos)) {
+    out.push(matchResult(r, t));
+    const e = r.groupEnd(0);
+    pos = e > r.groupStart(0) ? e : e + 1;
+  }
+  return out.length == 0 ? NIL : listOf(out);
+}
+
+// Expand $1..$9, $& and $$ in a replacement template (JS semantics, matching the JS backend).
+function expandRepl(r: Regex, s: string, tpl: string): string {
+  if (tpl.indexOf("$") < 0) return tpl;
+  let out = "";
+  for (let i = 0; i < tpl.length; i++) {
+    const c = tpl.charCodeAt(i);
+    if (c == 36 && i + 1 < tpl.length) {
+      const d = tpl.charCodeAt(i + 1);
+      if (d == 36) {
+        out += "$";
+        i++;
+        continue;
+      }
+      if (d == 38) {
+        out += s.substring(r.groupStart(0), r.groupEnd(0));
+        i++;
+        continue;
+      }
+      if (d >= 49 && d <= 57 && d - 48 <= r.ngroups) {
+        const a = r.groupStart(d - 48);
+        const b = r.groupEnd(d - 48);
+        if (a >= 0 && b >= 0) out += s.substring(a, b);
+        i++;
+        continue;
+      }
+    }
+    out += tpl.charAt(i);
+  }
+  return out;
+}
+function replaceRe(s: string, r: Regex, repl: Value, all: bool): string {
+  let out = "";
+  let last: i32 = 0;
+  let pos: i32 = 0;
+  while (pos <= s.length && r.search(s, pos)) {
+    const ms = r.groupStart(0);
+    const me = r.groupEnd(0);
+    out += s.substring(last, ms);
+    if (repl instanceof Str) out += expandRepl(r, s, changetype<Str>(repl).v);
+    else out += toStr(callV1(repl, matchResult(r, s)), false);
+    last = me;
+    pos = me > ms ? me : me + 1;
+    if (!all) break;
+  }
+  return out + s.substring(last);
+}
+export function cljstrReplace(s: Value, a: Value, b: Value): Value {
+  if (a instanceof Re) return new Str(replaceRe(strOf(s), reOf(a), b, true));
+  return new Str(strOf(s).replaceAll(strOf(a), strOf(b)));
+}
+export function cljstrReplaceFirst(s: Value, a: Value, b: Value): Value {
+  const t = strOf(s);
+  if (a instanceof Re) return new Str(replaceRe(t, reOf(a), b, false));
+  const m = strOf(a);
+  const i = t.indexOf(m);
+  if (i < 0) return new Str(t);
+  return new Str(t.substring(0, i) + strOf(b) + t.substring(i + m.length));
+}
+export function cljstrSplit2(s: Value, sep: Value): Value {
+  return cljstrSplit3(s, sep, mkNum(0));
+}
+export function cljstrSplit3(s: Value, sep: Value, limit: Value): Value {
+  const t = strOf(s);
+  const lim = <i32>toF64(limit);
+  const parts = new Array<string>();
+  if (sep instanceof Re) {
+    const r = reOf(sep);
+    let last: i32 = 0;
+    let q: i32 = 0;
+    while (q < t.length && (lim <= 0 || parts.length < lim - 1) && r.search(t, q)) {
+      const ms = r.groupStart(0);
+      const me = r.groupEnd(0);
+      if (ms >= t.length) break;
+      if (me == last) {
+        q = ms + 1;
+        continue;
+      }
+      parts.push(t.substring(last, ms));
+      last = me;
+      q = me > ms ? me : me + 1;
+    }
+    parts.push(t.substring(last));
+  } else {
+    const sp = strOf(sep);
+    if (sp.length == 0) {
+      for (let i = 0; i < t.length; i++) parts.push(t.charAt(i));
+    } else {
+      let last: i32 = 0;
+      while (lim <= 0 || parts.length < lim - 1) {
+        const i = t.indexOf(sp, last);
+        if (i < 0) break;
+        parts.push(t.substring(last, i));
+        last = i + sp.length;
+      }
+      parts.push(t.substring(last));
+    }
+  }
+  if (lim <= 0 && parts.length > 1) {
+    while (parts.length > 0 && parts[parts.length - 1].length == 0) parts.pop();
+  }
+  const out = new Array<Value>();
+  for (let i = 0; i < parts.length; i++) out.push(new Str(parts[i]));
+  return mkVec(out);
 }

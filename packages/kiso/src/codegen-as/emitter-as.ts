@@ -169,7 +169,13 @@ const CORE_OPS: Record<string, CoreOp> = {
   'cljstr-includes?': { kind: 'bool', fn: 'cljstrIncludes', arity: 2 },
   'cljstr-reverse': { kind: 'value', fn: 'cljstrReverse', arity: 1 },
   'cljstr-replace': { kind: 'value', fn: 'cljstrReplace', arity: 3 },
-  'cljstr-split': { kind: 'value', fn: 'cljstrSplit', arity: 2 },
+  'cljstr-split': { kind: 'value', fn: 'cljstrSplit', arity: [2, 3], sfx: true },
+  'cljstr-replace-first': { kind: 'value', fn: 'cljstrReplaceFirst', arity: 3 },
+  're-find': { kind: 'value', fn: 'kreFind', arity: 2 },
+  're-matches': { kind: 'value', fn: 'kreMatches', arity: 2 },
+  're-seq': { kind: 'value', fn: 'kreSeq', arity: 2 },
+  're-pattern': { kind: 'value', fn: 'krePattern', arity: 1 },
+  'regexp?': { kind: 'bool', fn: 'isRegex', arity: 1 },
   subs: { kind: 'value', fn: 'ksubs', arity: [2, 3], sfx: true },
   'cljstr-capitalize': { kind: 'value', fn: 'cljstrCapitalize', arity: 1 },
   'cljstr-index-of': { kind: 'value', fn: 'cljstrIndexOf', arity: [2, 3], sfx: true },
@@ -230,7 +236,7 @@ const RUNTIME_IMPORTS = [
   'println', 'print', 'pr', 'kcaptureOut', 'prn', 'prStr', 'str',
   'SetV', 'ExInfo', 'EMPTY_SET', 'mkSet', 'hashSet', 'kset', 'kdisj', 'isSet', 'isList', 'isSeq', 'items', 'klist', 'kseq', 'krest', 'knext',
   'kcons', 'kemptyOf', 'kreverse', 'kconcat', 'ktake', 'kdrop', 'kmap2', 'kmap3', 'kmapv', 'kfilter', 'kfilterv', 'kremove', 'ksome',
-  'Rec', 'Reified', 'noImpl', 'kevery', 'kinto', 'krange1', 'krange2', 'krange3', 'kapply', 'lazySeq', 'kdoall', 'kdorun', 'kiterate', 'krepeat1', 'krepeat2', 'kcycle', 'ktakeWhile', 'kdropWhile', 'kmapcat', 'krange0', 'ksort1', 'ksort2', 'ksortBy2', 'ksortBy3', 'kcompare', 'kexInfo', 'kexMessage', 'Sym', 'ksymbol1', 'ksymbol2', 'isSymbol', 'kcmpN', 'ksqrt', 'kpow', 'kfloor', 'kceil', 'katom', 'kderef', 'kreset', 'kint', 'kint', 'kquot', 'kbitShl', 'kbitShr', 'kbitAnd', 'kbitOr', 'kbitXor', 'kabs', 'kboolean', 'isInteger', 'isFloat', 'isFn', 'SortedMapV', 'sortedMap', 'sortedSet', 'sortedMapBy', 'sortedSetBy', 'ksortedMapEmptyBy', 'ksortedSetEmptyBy', 'isSortedMap', 'isSortedSet', 'isSorted', 'ksubseq3', 'ksubseq5', 'krsubseq3', 'krsubseq5', 'kmeta', 'kwithMeta', 'kresetMeta', 'kidentical', 'khash', 'krealized', 'isSequential', 'isTrue', 'isFalse', 'kname', 'knamespace', 'cljstrUpperCase', 'cljstrLowerCase', 'cljstrTrim', 'cljstrBlank', 'cljstrStartsWith', 'cljstrEndsWith', 'cljstrIncludes', 'cljstrReverse', 'cljstrReplace', 'cljstrSplit', 'cljstrCapitalize', 'cljstrIndexOf2', 'cljstrIndexOf3', 'cljstrLastIndexOf2', 'cljstrLastIndexOf3', 'cljstrTriml', 'cljstrTrimr', 'cljstrTrimNewline', 'cljstrSplitLines', 'cljstrEscape', 'isChar', 'kchar', 'Atom', 'kswap', 'ksubs2', 'ksubs3', 'cljstrJoin1', 'cljstrJoin2',  'kexData', 'restOf',
+  'Rec', 'Reified', 'noImpl', 'kevery', 'kinto', 'krange1', 'krange2', 'krange3', 'kapply', 'lazySeq', 'kdoall', 'kdorun', 'kiterate', 'krepeat1', 'krepeat2', 'kcycle', 'ktakeWhile', 'kdropWhile', 'kmapcat', 'krange0', 'ksort1', 'ksort2', 'ksortBy2', 'ksortBy3', 'kcompare', 'kexInfo', 'kexMessage', 'Sym', 'ksymbol1', 'ksymbol2', 'isSymbol', 'kcmpN', 'ksqrt', 'kpow', 'kfloor', 'kceil', 'katom', 'kderef', 'kreset', 'kint', 'kint', 'kquot', 'kbitShl', 'kbitShr', 'kbitAnd', 'kbitOr', 'kbitXor', 'kabs', 'kboolean', 'isInteger', 'isFloat', 'isFn', 'SortedMapV', 'sortedMap', 'sortedSet', 'sortedMapBy', 'sortedSetBy', 'ksortedMapEmptyBy', 'ksortedSetEmptyBy', 'isSortedMap', 'isSortedSet', 'isSorted', 'ksubseq3', 'ksubseq5', 'krsubseq3', 'krsubseq5', 'kmeta', 'kwithMeta', 'kresetMeta', 'kidentical', 'khash', 'krealized', 'isSequential', 'isTrue', 'isFalse', 'kname', 'knamespace', 'cljstrUpperCase', 'cljstrLowerCase', 'cljstrTrim', 'cljstrBlank', 'cljstrStartsWith', 'cljstrEndsWith', 'cljstrIncludes', 'cljstrReverse', 'cljstrReplace', 'cljstrSplit2', 'cljstrSplit3', 'cljstrReplaceFirst', 'Re', 'kreCompile', 'kreFind', 'kreMatches', 'kreSeq', 'krePattern', 'isRegex', 'cljstrCapitalize', 'cljstrIndexOf2', 'cljstrIndexOf3', 'cljstrLastIndexOf2', 'cljstrLastIndexOf3', 'cljstrTriml', 'cljstrTrimr', 'cljstrTrimNewline', 'cljstrSplitLines', 'cljstrEscape', 'isChar', 'kchar', 'Atom', 'kswap', 'ksubs2', 'ksubs3', 'cljstrJoin1', 'cljstrJoin2',  'kexData', 'restOf',
 ];
 
 function unsupported(construct: string, reason: string): never {
@@ -461,6 +467,8 @@ class Emitter {
       }
       case 'string':
         return this.constant(`s:${value as string}`, `new Str(${JSON.stringify(value)})`);
+      case 'regex':
+        return this.constant(`r:${value as string}`, `kreCompile(${JSON.stringify(value)})`);
       default:
         return unsupported(`${jsType} literal`, 'only nil, boolean, number and string literals are supported in M2');
     }

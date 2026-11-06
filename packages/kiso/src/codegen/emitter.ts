@@ -306,7 +306,7 @@ function emitLiteral(node: { value: unknown; jsType: string }): string {
   if (node.value === null) return 'null';
   if (node.jsType === 'regex') {
     const escaped = String(node.value).replace(/(?<!\\)\//g, '\\/');
-    return `/${escaped}/`;
+    return escaped === '' ? '/(?:)/' : `/${escaped}/`;
   }
   if (typeof node.value === 'string') return JSON.stringify(node.value);
   if (typeof node.value === 'bigint') return `${node.value}n`;
@@ -840,7 +840,7 @@ const RUNTIME_FUNCTIONS = new Set([
   // Array interop
   'aget', 'aset', 'alength', 'js-keys',
   // Batch 4
-  '==', 're-pattern',
+  '==', 're-pattern', 'regexp?',
   'pr-str', 'prn-str', 'print-str', 'println-str',
   'array', 'aclone', 'js-delete',
   'hash', 'type', 'instance?',

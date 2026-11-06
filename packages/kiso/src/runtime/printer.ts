@@ -43,6 +43,7 @@ export function printStr(x: unknown, readably: boolean): string {
     (x as { forEach(f: (k: unknown) => void): void }).forEach((k) => parts.push(printStr(k, readably)));
     return `#{${parts.join(' ')}}`;
   }
+  if (x instanceof RegExp) return readably ? `#"${x.source}"` : x.source;
   if (Array.isArray(x)) return `#js [${x.map((e) => printStr(e, readably)).join(' ')}]`;
   if (typeof x === 'function') return '#object[Function]';
   const o = x as { toString?: () => string };

@@ -98,14 +98,29 @@ export function reverse(s: string): string {
   return s.split('').reverse().join('');
 }
 
-/** Splits string by pattern, optionally with a limit. */
-export function split(s: string, re: RegExp, limit?: number): PersistentVector {
-  const parts = s.split(re);
-  if (limit === undefined || limit <= 0 || parts.length <= limit) return vector(...parts);
-  const head = parts.slice(0, limit - 1);
-  // Reconstruct with original separator — find first match to get separator
-  head.push(parts.slice(limit - 1).join(s.match(re)?.[0] ?? ''));
-  return vector(...head);
+/** Splits string by pattern like Clojure: optional limit, trailing empty strings dropped when no limit. */
+export function split(s: string, re: RegExp | string, limit?: number): PersistentVector {
+  const lim = limit === undefined || limit <= 0 ? 0 : limit;
+  const r = new RegExp(typeof re === 'string' ? re.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') : re.source, typeof re === 'string' ? 'g' : re.flags.replace(/[gy]/g, '') + 'g');
+  const parts: string[] = [];
+  let last = 0;
+  let q = 0;
+  while (q < s.length && (lim === 0 || parts.length < lim - 1)) {
+    r.lastIndex = q;
+    const m = r.exec(s);
+    if (!m || m.index >= s.length) break;
+    const end = m.index + m[0].length;
+    if (end === last) {
+      q = m.index + 1;
+      continue;
+    }
+    parts.push(s.slice(last, m.index));
+    last = end;
+    q = end > m.index ? end : end + 1;
+  }
+  parts.push(s.slice(last));
+  if (lim === 0) while (parts.length > 1 && parts[parts.length - 1] === '') parts.pop();
+  return vector(...parts);
 }
 
 /** Splits s by line breaks. */

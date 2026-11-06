@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 export type GcRuntime = 'incremental' | 'minimal' | 'stub';
 export type BuildOptions = { optimize?: boolean; runtime?: GcRuntime };
 
+const REGEX_PATH = fileURLToPath(new URL('../../as-runtime/kiso-regex.ts', import.meta.url));
 const JSON_PATH = fileURLToPath(new URL('../../as-runtime/kiso-json.ts', import.meta.url));
 
 // src/codegen-as and dist/codegen-as are both two levels below the package root
@@ -21,6 +22,7 @@ export async function buildWasm(asSource: string, opts: BuildOptions = {}): Prom
     'main.ts': asSource,
     'kiso-runtime.ts': readFileSync(RUNTIME_PATH, 'utf8'),
     'kiso-json.ts': readFileSync(JSON_PATH, 'utf8'),
+    'kiso-regex.ts': readFileSync(REGEX_PATH, 'utf8'),
   };
   let binary: Uint8Array | null = null;
   let stderr = '';

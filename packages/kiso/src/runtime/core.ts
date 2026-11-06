@@ -1069,25 +1069,29 @@ export function reduce_kv(f: (acc: unknown, k: unknown, v: unknown) => unknown, 
 
 // -- Regex --
 
-export function re_find(re: RegExp, s: string): unknown {
-  const m = s.match(re);
-  if (!m) return null;
+function reResult(m: RegExpMatchArray | RegExpExecArray): unknown {
   return m.length === 1 ? m[0] : vector(...m);
+}
+
+export function re_find(re: RegExp, s: string): unknown {
+  const m = new RegExp(re.source, re.flags.replace(/[gy]/g, '')).exec(s);
+  return m ? reResult(m) : null;
 }
 
 export function re_matches(re: RegExp, s: string): unknown {
-  const anchored = new RegExp(`^${re.source}$`, re.flags);
-  const m = s.match(anchored);
-  if (!m) return null;
-  return m.length === 1 ? m[0] : vector(...m);
+  const m = new RegExp(`^(?:${re.source})$`, re.flags.replace(/[gy]/g, '')).exec(s);
+  return m ? reResult(m) : null;
 }
 
 export function re_seq(re: RegExp, s: string): unknown {
-  const matches: string[] = [];
-  let m: RegExpExecArray | null;
+  const matches: unknown[] = [];
   const r = new RegExp(re.source, re.flags.includes('g') ? re.flags : re.flags + 'g');
-  while ((m = r.exec(s)) !== null) { matches.push(m[0]); }
-  return list(...matches);
+  let m: RegExpExecArray | null;
+  while ((m = r.exec(s)) !== null) {
+    matches.push(reResult(m));
+    if (m[0] === '') r.lastIndex++;
+  }
+  return matches.length === 0 ? null : list(...matches);
 }
 
 // -- Misc --
@@ -1386,6 +1390,7 @@ export function num_eq(...args: unknown[]): boolean {
 // -- Regex --
 
 export function re_pattern(s: string): RegExp { return new RegExp(s); }
+export function regexp_p(x: unknown): boolean { return x instanceof RegExp; }
 
 // -- Printing to string --
 
