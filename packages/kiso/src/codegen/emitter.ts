@@ -796,7 +796,7 @@ const RUNTIME_FUNCTIONS = new Set([
   '>', '<', '>=', '<=',
   'defprotocol', 'protocolFn',
   'defmultiFn',
-  'clj->js', 'js->clj', 'bean', 'js-obj', 'js-array',
+  'clj->js', 'js->clj', 'bean', 'js-obj', 'js-array', 'into-array', 'to-array',
   // Map operations
   'get-in', 'assoc-in', 'update', 'update-in',
   'keys', 'vals', 'merge', 'select-keys', 'find',

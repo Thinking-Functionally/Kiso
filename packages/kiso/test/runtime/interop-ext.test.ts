@@ -2,7 +2,7 @@
  * Tests for extended JS interop: bean, js-obj, js-array.
  */
 import { describe, it, expect } from 'vitest';
-import { bean, js_obj, js_array } from '../../src/runtime/interop.js';
+import { bean, js_obj, js_array, into_array } from '../../src/runtime/interop.js';
 import { keyword, isKeyword } from '../../src/runtime/keyword.js';
 import { vector } from '../../src/runtime/vector.js';
 import { hashMap, PersistentHashMap } from '../../src/runtime/hash-map.js';
@@ -71,10 +71,15 @@ describe('js_obj', () => {
 
 // ── js-array ──
 
-describe('js_array', () => {
+describe('js_array / into_array', () => {
+  it('js_array is variadic', () => {
+    expect(js_array(1, 2, 3)).toEqual([1, 2, 3]);
+    expect(js_array()).toEqual([]);
+  });
+
   it('converts persistent vector to JS array', () => {
     const v = vector(1, 2, 3);
-    const result = js_array(v) as unknown[];
+    const result = into_array(v) as unknown[];
     expect(result).toEqual([1, 2, 3]);
     expect(Array.isArray(result)).toBe(true);
   });
@@ -82,18 +87,18 @@ describe('js_array', () => {
   it('is shallow — nested vectors remain as persistent vectors', () => {
     const inner = vector(4, 5);
     const v = vector(1, inner, 3);
-    const result = js_array(v) as unknown[];
+    const result = into_array(v) as unknown[];
     expect(result[1]).toBe(inner); // same reference
   });
 
   it('converts list to JS array', () => {
     const l = list(1, 2, 3);
-    const result = js_array(l) as unknown[];
+    const result = into_array(l) as unknown[];
     expect(result).toEqual([1, 2, 3]);
   });
 
   it('handles empty vector', () => {
-    const result = js_array(vector()) as unknown[];
+    const result = into_array(vector()) as unknown[];
     expect(result).toEqual([]);
   });
 });

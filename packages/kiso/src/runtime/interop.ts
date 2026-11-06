@@ -90,8 +90,13 @@ export function js_obj(...args: unknown[]): unknown {
   return obj;
 }
 
-/** Shallow convert sequential collection to JS array. */
-export function js_array(coll: unknown): unknown[] {
+/** Create a JS array from the arguments (like cljs `js-array`). */
+export function js_array(...items: unknown[]): unknown[] {
+  return items;
+}
+
+/** Shallow convert a sequential collection to a JS array (`into-array` / `to-array`). */
+export function into_array(coll: unknown): unknown[] {
   if (isVector(coll)) {
     const v = coll as PersistentVector;
     const arr: unknown[] = [];
@@ -113,24 +118,27 @@ export function js_array(coll: unknown): unknown[] {
   return [];
 }
 
-/** Convert plain JS data to Kiso persistent data (recursive). */
-export function js_to_clj(x: unknown): unknown {
-  if (x === null || x === undefined) return x;
-
-  if (Array.isArray(x)) {
-    return vector(...x.map(js_to_clj));
+/** Convert plain JS data to Kiso persistent data (recursive). Keys stay strings unless `:keywordize-keys true`. */
+export function js_to_clj(x: unknown, ...opts: unknown[]): unknown {
+  let keywordize = false;
+  for (let i = 0; i + 1 < opts.length; i += 2) {
+    const k = opts[i] as { name?: string } | null;
+    if (k && k.name === 'keywordize-keys') keywordize = opts[i + 1] !== false && opts[i + 1] != null;
   }
-
-  if (typeof x === 'object' && x.constructor === Object) {
-    const kvs: unknown[] = [];
-    for (const [k, v] of Object.entries(x)) {
-      kvs.push(keyword(k), js_to_clj(v));
+  const conv = (v: unknown): unknown => {
+    if (v === null || v === undefined) return v;
+    if (Array.isArray(v)) return vector(...v.map(conv));
+    if (typeof v === 'object' && v.constructor === Object) {
+      const kvs: unknown[] = [];
+      for (const [k, val] of Object.entries(v)) kvs.push(keywordize ? keyword(k) : k, conv(val));
+      return hashMap(...kvs);
     }
-    return hashMap(...kvs);
-  }
-
-  return x;
+    return v;
+  };
+  return conv(x);
 }
+
+export { into_array as to_array };
 
 // Backward-compatible camelCase aliases
 export { clj_to_js as cljToJs, js_to_clj as jsToClj };

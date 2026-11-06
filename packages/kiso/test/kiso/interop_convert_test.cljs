@@ -25,9 +25,10 @@
   (is (nil? (js->clj nil)))
   (is (= [1 2 3] (js->clj (js* "[1,2,3]"))))
   (is (= [1 [2 3]] (js->clj (js* "[1,[2,3]]"))))
-  ;; Current behaviour: js->clj always keywordizes keys (CLJS default is string keys).
-  (is (= {:a 1 :b 2} (js->clj (js* "({a:1,b:2})"))))
-  (is (= {:items [{:id 1}]} (js->clj (js* "({items:[{id:1}]})")))))
+  (is (= {"a" 1 "b" 2} (js->clj (js* "({a:1,b:2})"))))
+  (is (= {"items" [{"id" 1}]} (js->clj (js* "({items:[{id:1}]})"))))
+  (is (= {:a 1 :b 2} (js->clj (js* "({a:1,b:2})") :keywordize-keys true)))
+  (is (= {:items [{:id 1}]} (js->clj (js* "({items:[{id:1}]})") :keywordize-keys true))))
 
 (deftest bean-shallow
   (let [inner (js* "({z:1})")
@@ -41,6 +42,7 @@
 (deftest js-obj-and-array
   (is (= "{\"name\":\"Alice\",\"age\":30}" (js/JSON.stringify (js-obj "name" "Alice" "age" 30))))
   (is (= "{}" (js/JSON.stringify (js-obj))))
-  ;; Current behaviour: js-array converts one collection (CLJS js-array is variadic).
-  (is (= "[1,2,3]" (js/JSON.stringify (js-array [1 2 3]))))
-  (is (= "[]" (js/JSON.stringify (js-array [])))))
+  (is (= "[1,2,3]" (js/JSON.stringify (js-array 1 2 3))))
+  (is (= "[]" (js/JSON.stringify (js-array))))
+  (is (= "[1,2,3]" (js/JSON.stringify (into-array [1 2 3]))))
+  (is (= "[1,2,3]" (js/JSON.stringify (to-array '(1 2 3))))))
