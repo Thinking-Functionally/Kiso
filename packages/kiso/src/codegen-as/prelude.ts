@@ -158,6 +158,26 @@ const PRELUDE = `
             (reduce (fn [a k] (if (contains? a k) (assoc a k (f (get a k) (get m k))) (assoc a k (get m k))))
                     (or acc {}) (keys m)))
           nil maps))
+(defn map-xf [f]
+  (fn [rf] (fn ([] (rf)) ([acc] (rf acc)) ([acc x] (rf acc (f x))))))
+(defn filter-xf [pred]
+  (fn [rf] (fn ([] (rf)) ([acc] (rf acc)) ([acc x] (if (pred x) (rf acc x) acc)))))
+(defn take-xf [n]
+  (fn [rf]
+    (let [left (atom n)]
+      (fn ([] (rf)) ([acc] (rf acc))
+        ([acc x]
+         (let [k (deref left)]
+           (swap! left dec)
+           (if (> k 1) (rf acc x) (if (= k 1) (ensure-reduced (rf acc x)) (ensure-reduced acc)))))))))
+(defn completing
+  ([f] (completing f identity))
+  ([f cf] (fn ([] (f)) ([x] (cf x)) ([x y] (f x y)))))
+(defn transduce
+  ([xf f coll] (transduce xf f (f) coll))
+  ([xf f init coll] (let [rf (xf f)] (rf (reduce rf init coll)))))
+(defn into-xf [to xf from]
+  (transduce xf (fn ([acc] acc) ([acc x] (conj acc x))) to from))
 (defn cljset-union [& sets] (reduce (fn [acc s] (reduce conj acc s)) #{} sets))
 (defn cljset-intersection [a & more]
   (reduce (fn [acc s] (reduce (fn [r x] (if (contains? s x) (conj r x) r)) #{} acc)) a more))
@@ -168,6 +188,14 @@ const PRELUDE = `
 (defn cljset-select [pred s] (reduce (fn [acc x] (if (pred x) acc (disj acc x))) s s))
 `;
 
+// Calls shaped like a transducer use (they may be threading forms, which is harmless over-linking).
+const XF_SHAPES: Record<string, { len: number; fn: string }> = {
+  map: { len: 2, fn: 'map-xf' },
+  filter: { len: 2, fn: 'filter-xf' },
+  take: { len: 2, fn: 'take-xf' },
+  into: { len: 4, fn: 'into-xf' },
+};
+
 let parsed: Map<string, Form> | null = null;
 let deps: Map<string, Set<string>> | null = null;
 
@@ -177,6 +205,11 @@ function collect(f: Form, out: Set<string>): void {
   const n = symName(f);
   if (n) out.add(n);
   const d = f.data;
+  if (d.type === 'list' && d.items.length > 1) {
+    const head = symName(d.items[0]!);
+    const xf = head && XF_SHAPES[head];
+    if (xf && d.items.length === xf.len) out.add(xf.fn);
+  }
   if ('items' in d) for (const x of d.items as Form[]) collect(x, out);
   else if (d.type === 'tagged') collect(d.form, out);
 }

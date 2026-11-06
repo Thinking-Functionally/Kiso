@@ -741,11 +741,31 @@ export function callVN(f: Value, args: Array<Value>): Value {
   return asFn(f).invoke(args);
 }
 
+export class Reduced extends Value {
+  constructor(public v: Value) {
+    super();
+  }
+}
+export function kreduced(v: Value): Value {
+  return new Reduced(v);
+}
+export function isReduced(v: Value): bool {
+  return v instanceof Reduced;
+}
+export function kunreduced(v: Value): Value {
+  return v instanceof Reduced ? changetype<Reduced>(v).v : v;
+}
+export function kensureReduced(v: Value): Value {
+  return v instanceof Reduced ? v : new Reduced(v);
+}
 export function kreduce3(f: Value, init: Value, c: Value): Value {
   const a = items(c);
   const n = a.length;
   let acc = init;
-  for (let i = 0; i < n; i++) acc = callV2(f, acc, unchecked(a[i]));
+  for (let i = 0; i < n; i++) {
+    acc = callV2(f, acc, unchecked(a[i]));
+    if (acc instanceof Reduced) return changetype<Reduced>(acc).v;
+  }
   return acc;
 }
 export function kreduce2(f: Value, c: Value): Value {
@@ -753,7 +773,10 @@ export function kreduce2(f: Value, c: Value): Value {
   const n = a.length;
   if (n == 0) return callV0(f);
   let acc = unchecked(a[0]);
-  for (let i = 1; i < n; i++) acc = callV2(f, acc, unchecked(a[i]));
+  for (let i = 1; i < n; i++) {
+    acc = callV2(f, acc, unchecked(a[i]));
+    if (acc instanceof Reduced) return changetype<Reduced>(acc).v;
+  }
   return acc;
 }
 

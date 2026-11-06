@@ -64,6 +64,10 @@ const CORE_OPS: Record<string, CoreOp> = {
   vec: { kind: 'value', fn: 'kvec', arity: 1 },
   identity: { kind: 'value', fn: 'identity', arity: 1 },
   reduce: { kind: 'value', fn: 'kreduce', arity: [2, 3] },
+  reduced: { kind: 'value', fn: 'kreduced', arity: 1 },
+  'reduced?': { kind: 'bool', fn: 'isReduced', arity: 1 },
+  unreduced: { kind: 'value', fn: 'kunreduced', arity: 1 },
+  'ensure-reduced': { kind: 'value', fn: 'kensureReduced', arity: 1 },
   'get-in': { kind: 'value', fn: 'kgetIn', arity: [2, 3] },
   'set?': { kind: 'bool', fn: 'isSet', arity: 1 },
   'list?': { kind: 'bool', fn: 'isList', arity: 1 },
@@ -157,6 +161,13 @@ const CORE_OPS: Record<string, CoreOp> = {
   'ex-data': { kind: 'value', fn: 'kexData', arity: 1 },
 };
 // Runtime fns taking all arguments as one Array<Value>.
+// Transducer-returning arities are implemented by prelude functions in Kiso.
+const TRANSDUCER_ARITY: Record<string, { argc: number; fn: string }> = {
+  map: { argc: 1, fn: 'map-xf' },
+  filter: { argc: 1, fn: 'filter-xf' },
+  take: { argc: 1, fn: 'take-xf' },
+  into: { argc: 3, fn: 'into-xf' },
+};
 const CMP_OPS: Record<string, number> = { '<': 0, '>': 1, '<=': 2, '>=': 3 };
 const ARRAY_OPS: Record<string, string> = { vector: 'vector', 'hash-map': 'hashMap', 'pr-str': 'prStr', prn: 'prn', println: 'println', str: 'str', list: 'klist', 'hash-set': 'hashSet', concat: 'kconcat' };
 
@@ -182,7 +193,7 @@ const RUNTIME_IMPORTS = [
   'isEven', 'isOdd', 'isNil', 'isSome', 'isNumber', 'isString', 'isBoolean', 'isKeyword', 'isVector', 'isMap', 'identity',
   'mkVec', 'mkMap', 'EMPTY_VEC', 'EMPTY_MAP', 'vector', 'hashMap', 'kcount', 'kempty', 'kconj', 'kconjN', 'knth', 'knth3', 'kget', 'kget3', 'kassoc', 'kassocN',
   'kdissoc', 'kcontains', 'kkeys', 'kvals', 'kfirst', 'ksecond', 'klast', 'kpeek', 'kpop', 'kvec', 'kmax', 'kmin',
-  'callV0', 'callV1', 'callV2', 'callV3', 'callVN', 'kreduce2', 'kreduce3', 'kupdate', 'kgetIn', 'kgetIn3',
+  'callV0', 'callV1', 'callV2', 'callV3', 'callVN', 'kreduce2', 'kreduce3', 'kreduced', 'isReduced', 'kunreduced', 'kensureReduced', 'kupdate', 'kgetIn', 'kgetIn3',
   'println', 'prn', 'prStr', 'str',
   'SetV', 'ExInfo', 'EMPTY_SET', 'mkSet', 'hashSet', 'kset', 'kdisj', 'isSet', 'isList', 'isSeq', 'items', 'klist', 'kseq', 'krest', 'knext',
   'kcons', 'kemptyOf', 'kreverse', 'kconcat', 'ktake', 'kdrop', 'kmap2', 'kmap3', 'kmapv', 'kfilter', 'kfilterv', 'kremove', 'ksome',
@@ -563,6 +574,10 @@ class Emitter {
 
   private invoke(e: Extract<LExpr, { type: 'invoke' }>): string {
     const core = this.coreOpFor(e.fn);
+    const xf = core && TRANSDUCER_ARITY[core.op];
+    if (xf && xf.argc === e.args.length && this.globals.has(xf.fn)) {
+      return this.invoke({ ...e, fn: { type: 'var', name: xf.fn, kind: 'global' } });
+    }
     if (core) return this.coreCall(core.op, e.args);
     const a = this.args(e.args);
     if (e.fn.type === 'var' && e.fn.kind === 'self') {
