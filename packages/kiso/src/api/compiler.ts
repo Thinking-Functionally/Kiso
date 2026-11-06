@@ -2,7 +2,8 @@
 //
 // Single-entry-point for compiling ClojureScript to JavaScript.
 
-import { setMacroTarget } from '../analyzer/macros.js';
+import { setMacroTarget, setTestMacros } from '../analyzer/macros.js';
+import '../analyzer/test-macros.js';
 import { linkModules, type NsLoader } from '../codegen-as/modules.js';
 import { readStr, readAllStr } from '../reader/reader.js';
 import { Analyzer } from '../analyzer/analyzer.js';
@@ -23,6 +24,8 @@ export type CompileOptions = {
   features?: string[];
   /** AS target only: resolves project-local `(:require ...)` namespaces by inlining them. */
   loadNs?: NsLoader;
+  /** Enable the clojure.test subset macros (deftest/is/testing/are); used by the tests/clj harness. */
+  testMacros?: boolean;
   /** AS target only: entry points that must be defined. */
   exports?: string[];
   /** AS target only: serverless handler def name (exported as `kiso_handle`). */
@@ -98,7 +101,7 @@ export function compile(source: string, options?: CompileOptions): CompileResult
     const isCljc = filename?.endsWith('.cljc') ?? false;
     const features = options?.features ?? (options?.target === 'as' ? ['as', 'cljs'] : isCljc ? ['cljs'] : null);
     forms = readAllStr(source, features);
-    if (options?.target === 'as' && options.loadNs) forms = linkModules(forms, options.loadNs, features ?? []);
+    if (options?.loadNs) forms = linkModules(forms, options.loadNs, features ?? [], options.target !== 'as');
   } catch (err) {
     throw wrapError(err, 'read', filename);
   }
@@ -110,6 +113,7 @@ export function compile(source: string, options?: CompileOptions): CompileResult
 
   let nodes: Node[];
   setMacroTarget(options?.target === 'as' ? 'as' : 'js');
+  setTestMacros(options?.testMacros === true);
   try {
     nodes = forms.map((f) => {
       try {
@@ -130,6 +134,7 @@ export function compile(source: string, options?: CompileOptions): CompileResult
     throw wrapError(err, 'analyze', filename);
   } finally {
     setMacroTarget('js');
+    setTestMacros(false);
   }
 
   if (options?.target === 'as') {

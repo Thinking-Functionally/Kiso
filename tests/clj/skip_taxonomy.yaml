@@ -1,0 +1,13 @@
+# Upstream skip taxonomy per ADR-0046. Schema columns:
+#   test_file / test_name / tier (A|B|C|D) / reason / recall_trigger / last_reviewed
+#
+# Empty for cycle 1 — the ported set in cw_ported.clj is hand-
+# curated to live within cw v1's current Tier-A surface (workarounds
+# for D-075 / D-080 / D-099 are inline in the test bodies). Future
+# cycles that port broader upstream fixtures will populate this
+# yaml when they hit Tier B / C / D test cases that should be
+# skipped from the 100% PASS gate.
+
+version: 1
+last_updated: 2026-05-27
+skipped: []

@@ -426,6 +426,13 @@ bindings (string values only), no fs, `host/exit` -> 500. (5) `host/json-parse` 
 **Decision**: (1) True lazy sequences on AS: `lazy-seq`, `map`/`filter`/`remove`/`take`/`drop`/`take-while`/`drop-while`/`mapcat`/`concat`/`cons`/`iterate`/`repeat`/`cycle`/`range` (0-arity = infinite); cells cache, so side effects run once. No closures in AS, so each op is a `LazySeq` subclass with `compute()`. `some`/`every?`/`first`/`rest`/`next`/`take` stream, so infinite seqs work; `count`/`reduce`/`into`/`vec`/`apply`/printing/JSON realize. `doall`/`dorun` added. (2) `for` is lazy on AS via an AS-only macro override (`setMacroTarget('as')`; JS expansion unchanged), built from `mapcat`/`map`/`filter`/`take-while`; `:when`/`:let` anywhere, `:while` only directly after a binding. (3) `sort`/`sort-by`/`compare`: stable merge sort; comparator may be 3-way number or boolean predicate; compare orders nil < numbers/strings/keywords/booleans/vectors, aborts on mixed types.
 **Limits / deviations**: no 32-element chunking (elements realize one at a time); `rest`/`next` return lazy cells so `(list? (rest xs))` is false; `try`/`catch` stays a compile error (asc 0.28 has no exception handling, AS100); `throw` aborts and the host surfaces an Error; compile-time chain fusion not done.
 
+### D27: tests/clj integration (clojure.test suites)
+
+**Date**: 2026-11-06
+
+**Decision**: The ClojureWasm-origin suites in `tests/clj` run under vitest (`packages/kiso/test/clj-suite/`). A clojure.test subset (`deftest`/`is`/`testing`/`are`/`run-tests`, `thrown?`) is an opt-in compile option `testMacros` (`src/analyzer/test-macros.ts`); assertions print `CLJT pass|fail|error|skip` lines the harness counts. Project namespaces are linked with `linkModules`, now also used on JS (lenient: unknown namespaces such as `clojure.string` stay as `:require`). `baseline.json` is a ratchet per suite and backend (`ran` counts, `unsupported` with the first rejection reason, `broken`); regenerate with `KISO_CLJ_UPDATE=1`. `KISO_CLJ_JVM=1` runs every suite on JVM `clj` (all 11 pass, so the suites are valid).
+**Findings**: JS backend runs only 3 of 11 suites without crashing (loop-binding shadowing, `vec` import, unresolved `clojure.set`, etc.); AS rejects every suite at its first missing core fn (`nnext`, `long`, `distinct`, `min-key`, `read-string`, `clojure.string`, `clojure.set`, atoms in the harness, `try`). The baseline reasons are the roadmap for ClojureScript parity on AS. AS `thrown?` assertions are skipped (no `try`). Slow suites and suites needing `eval` are excluded.
+
 ## Known Issues
 
 All previously tracked issues (I1–I6) have been resolved. See `archive/bugs-fixed.md` for details.

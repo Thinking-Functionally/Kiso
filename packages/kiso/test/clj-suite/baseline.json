@@ -1,0 +1,121 @@
+{
+  "tier_a": {
+    "js": {
+      "status": "ran",
+      "pass": 11,
+      "fail": 0,
+      "error": 2,
+      "skip": 0
+    },
+    "as": {
+      "status": "unsupported",
+      "reason": "AssemblyScript backend: (clojure.string/upper-case …) with 1 args is not supported (unknown core function or arity)"
+    }
+  },
+  "regression": {
+    "js": {
+      "status": "ran",
+      "pass": 0,
+      "fail": 0,
+      "error": 10,
+      "skip": 0
+    },
+    "as": {
+      "status": "unsupported",
+      "reason": "AssemblyScript backend: var min-key is not supported (not defined in this module and not a supported core function)"
+    }
+  },
+  "p99_lists": {
+    "js": {
+      "status": "ran",
+      "pass": 10,
+      "fail": 11,
+      "error": 72,
+      "skip": 0
+    },
+    "as": {
+      "status": "unsupported",
+      "reason": "AssemblyScript backend: (nnext …) with 1 args is not supported (unknown core function or arity)"
+    }
+  },
+  "p99_arithmetic": {
+    "js": {
+      "status": "broken",
+      "reason": "Cannot use import statement outside a module"
+    },
+    "as": {
+      "status": "unsupported",
+      "reason": "AssemblyScript backend: (long …) with 1 args is not supported (unknown core function or arity)"
+    }
+  },
+  "fourclojure": {
+    "js": {
+      "status": "broken",
+      "reason": "Cannot use import statement outside a module"
+    },
+    "as": {
+      "status": "unsupported",
+      "reason": "namespace clojure.set (required by fourclojure.core-test) not found in the project sources"
+    }
+  },
+  "p99_logic": {
+    "js": {
+      "status": "broken",
+      "reason": "Identifier '_' has already been declared"
+    },
+    "as": {
+      "status": "unsupported",
+      "reason": "namespace clojure.string (required by p99.logic-test) not found in the project sources"
+    }
+  },
+  "p99_trees": {
+    "js": {
+      "status": "broken",
+      "reason": "Unexpected identifier 'as'"
+    },
+    "as": {
+      "status": "unsupported",
+      "reason": "namespace clojure.string (required by p99.trees) not found in the project sources"
+    }
+  },
+  "p99_multitrees": {
+    "js": {
+      "status": "broken",
+      "reason": "Unexpected identifier 'as'"
+    },
+    "as": {
+      "status": "unsupported",
+      "reason": "namespace clojure.string (required by p99.multitrees) not found in the project sources"
+    }
+  },
+  "p99_graphs": {
+    "js": {
+      "status": "broken",
+      "reason": "Cannot read properties of null (reading 'length')"
+    },
+    "as": {
+      "status": "unsupported",
+      "reason": "AssemblyScript backend: (distinct …) with 1 args is not supported (unknown core function or arity)"
+    }
+  },
+  "p99_puzzles": {
+    "js": {
+      "status": "broken",
+      "reason": "Unexpected identifier 'as'"
+    },
+    "as": {
+      "status": "unsupported",
+      "reason": "namespace clojure.string (required by p99.puzzles) not found in the project sources"
+    }
+  },
+  "depth": {
+    "js": {
+      "status": "broken",
+      "reason": "Identifier 'odd_deep' has already been declared"
+    },
+    "as": {
+      "status": "unsupported",
+      "reason": "AssemblyScript backend: try is not supported (WebAssembly/AssemblyScript has no catchable exceptions; use ex-info (aborts) and return values for errors)"
+    }
+  }
+}

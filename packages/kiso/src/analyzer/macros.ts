@@ -15,12 +15,23 @@ import {
   makeKeyword,
 } from '../reader/form.js';
 
-type MacroFn = (items: Form[], form: Form) => Form;
+export type MacroFn = (items: Form[], form: Form) => Form;
 
 const MACROS = new Map<string, MacroFn>();
 // Macros that replace the shared ones when compiling for the AssemblyScript backend.
 const AS_MACROS = new Map<string, MacroFn>();
 let macroTarget: 'js' | 'as' = 'js';
+// Opt-in clojure.test subset (deftest/is/testing/are); see test-macros.ts.
+export const TEST_MACROS = new Map<string, MacroFn>();
+let testMacrosOn = false;
+
+export function setTestMacros(on: boolean): void {
+  testMacrosOn = on;
+}
+
+export function currentMacroTarget(): 'js' | 'as' {
+  return macroTarget;
+}
 
 /** Select which macro set expands forms (the JS set is the default). */
 export function setMacroTarget(target: 'js' | 'as'): void {
@@ -45,7 +56,7 @@ export function expandOnce(form: Form): Form {
   if (items.length === 0) return form;
   const head = items[0]!;
   if (head.data.type !== 'symbol' || head.data.ns !== null) return form;
-  const macroFn = (macroTarget === 'as' ? AS_MACROS.get(head.data.name) : undefined) ?? MACROS.get(head.data.name);
+  const macroFn = (testMacrosOn ? TEST_MACROS.get(head.data.name) : undefined) ?? (macroTarget === 'as' ? AS_MACROS.get(head.data.name) : undefined) ?? MACROS.get(head.data.name);
   if (!macroFn) return form;
   return macroFn(items, form);
 }

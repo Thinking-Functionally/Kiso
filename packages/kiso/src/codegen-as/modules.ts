@@ -39,7 +39,7 @@ function splitNs(f: Form): { ns: string; names: Set<string>; stripped: Form } {
   return { ns, names, stripped: { ...f, data: { type: 'list', items: rest } } };
 }
 
-type Spec = { ns: string; alias: string | null };
+type Spec = { ns: string; alias: string | null; form: Form };
 
 function requireSpecs(f: Form): Spec[] {
   const out: Spec[] = [];
@@ -55,7 +55,7 @@ function requireSpecs(f: Form): Spec[] {
         if (k === 'as') alias = sym(si[i + 1])?.name ?? null;
         else if (k !== 'refer') throw new LinkError(`unsupported :require option :${k} for ${target}`);
       }
-      out.push({ ns: target, alias });
+      out.push({ ns: target, alias, form: spec });
     }
   }
   return out;
@@ -84,7 +84,9 @@ function topLevelNames(forms: Form[]): string[] {
 }
 
 /** Inline project-local required namespaces into `forms`. No-op without `:require`. */
-export function linkModules(forms: Form[], load: NsLoader, features: string[]): Form[] {
+export function linkModules(forms: Form[], load: NsLoader, features: string[], lenient = false): Form[] {
+  // With `lenient`, namespaces the loader can't find (e.g. clojure.string on JS) stay as :require specs.
+  const kept = new Map<string, Form>();
   const seen = new Set<string>();
   const owner = new Map<string, string>();
   const linked: Form[] = [];
@@ -96,16 +98,23 @@ export function linkModules(forms: Form[], load: NsLoader, features: string[]): 
     if (nsIdx >= 0) {
       const specs = requireSpecs(fs[nsIdx]!);
       for (const s of specs) {
+        const dep = seen.has(s.ns) ? null : load(s.ns);
+        if (!dep && lenient && !seen.has(s.ns)) {
+          kept.set(`${s.ns}/${s.alias}`, s.form);
+          continue;
+        }
         aliases.set(s.ns, true);
         if (s.alias) aliases.set(s.alias, true);
         if (seen.has(s.ns)) continue;
         seen.add(s.ns);
-        const dep = load(s.ns);
         if (!dep) throw new LinkError(`namespace ${s.ns} (required by ${label}) not found in the project sources`);
         visit(readAllStr(dep.source, features), s.ns, false);
       }
       const { stripped } = splitNs(fs[nsIdx]!);
-      if (isRoot) body.push(stripped);
+      if (isRoot) {
+        const sit = items(stripped)!;
+        body.push(kept.size ? { ...stripped, data: { type: 'list', items: [...sit, { ...stripped, data: { type: 'list', items: [{ ...stripped, data: { type: 'keyword', ns: null, name: 'require' } }, ...kept.values()] } }] } } as Form : stripped);
+      }
     }
     fs.forEach((f, i) => {
       if (i === nsIdx) return;
