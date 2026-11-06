@@ -152,6 +152,10 @@ function expr(node: Node, out: LStmt[], ctx: Ctx): LExpr {
       const [fn, ...args] = exprs([node.fn, ...node.args], out, ctx, true);
       return { type: 'invoke', fn: fn!, args };
     }
+    case 'interop-call': {
+      if (node.method !== 'addMethod') return fail(ctx, node.type, `method .${node.method} is not supported`);
+      return { type: 'host-call', name: 'multi/add-method', args: exprs([node.target, ...node.args], out, ctx) };
+    }
     case 'new': {
       const [ctor, ...args] = exprs([node.ctor, ...node.args], out, ctx);
       return { type: 'new', ctor: ctor!, args };

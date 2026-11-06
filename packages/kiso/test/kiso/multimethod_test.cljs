@@ -1,5 +1,4 @@
-;; defmulti / defmethod behaviour (ported from test/e2e/defmulti.test.ts). AS has no defmulti yet.
-;; targets: js
+;; defmulti / defmethod behaviour (ported from test/e2e/defmulti.test.ts).
 (ns kiso.multimethod-test
   (:require [clojure.test :refer [deftest is]]))
 
@@ -30,3 +29,18 @@
 (deftest multi-arg-dispatch
   (is (= "a+b" (combine {:type :a} {:type :b})))
   (is (= "other" (combine {:type :b} {:type :a}))))
+
+(defmulti redefined :k)
+(defmethod redefined :a [m] 1)
+(defmethod redefined :a [m] 2)
+
+(deftest later-defmethod-replaces
+  (is (= 2 (redefined {:k :a}))))
+
+(defmulti kind (fn [x] (if (number? x) :num :other)))
+(defmethod kind :num [x] (inc x))
+(defmethod kind :default [x] x)
+
+(deftest used-as-a-value
+  (is (= [2 3] (mapv kind [1 2])))
+  (is (= :z (kind :z))))

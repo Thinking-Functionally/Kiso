@@ -2708,3 +2708,42 @@ export function kalength(arr: Value): Value {
 export function kaclone(arr: Value): Value {
   return new Arr(arrOf(arr).slice(0));
 }
+
+// Multimethod: runtime registry of (dispatch value -> method); `:default` is the fallback.
+class MultiFn extends Fn {
+  keys: Array<Value> = new Array<Value>();
+  fns: Array<Value> = new Array<Value>();
+  dflt: Value = NIL;
+  constructor(public dispatch: Value) {
+    super();
+  }
+  invoke(args: Array<Value>): Value {
+    const dv = callVN(this.dispatch, args);
+    for (let i = 0; i < this.keys.length; i++) {
+      if (eq(unchecked(this.keys[i]), dv)) return callVN(unchecked(this.fns[i]), args);
+    }
+    if (this.dflt !== NIL) return callVN(this.dflt, args);
+    abort("No method in multimethod for dispatch value: " + toStr(dv, true));
+    return NIL;
+  }
+}
+export function kdefmulti(dispatch: Value): Value {
+  return new MultiFn(dispatch);
+}
+export function kmultiAddMethod(mf: Value, dv: Value, f: Value): Value {
+  if (!(mf instanceof MultiFn)) abort("defmethod: target is not a multimethod");
+  const m = changetype<MultiFn>(mf);
+  if (dv instanceof Kw && changetype<Kw>(dv).ns == "" && changetype<Kw>(dv).name == "default") {
+    m.dflt = f;
+    return mf;
+  }
+  for (let i = 0; i < m.keys.length; i++) {
+    if (eq(unchecked(m.keys[i]), dv)) {
+      m.fns[i] = f;
+      return mf;
+    }
+  }
+  m.keys.push(dv);
+  m.fns.push(f);
+  return mf;
+}

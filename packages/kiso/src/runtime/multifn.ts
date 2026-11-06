@@ -31,7 +31,10 @@ export function defmultiFn(dispatchFn: (...args: any[]) => any): MultiFn {
       defaultMethod = fn;
       return;
     }
-    methods.push([dispatchVal, fn]);
+    // A later defmethod for an equal dispatch value replaces the earlier one.
+    const i = methods.findIndex(([key]) => equiv(key, dispatchVal));
+    if (i >= 0) methods[i] = [dispatchVal, fn];
+    else methods.push([dispatchVal, fn]);
   };
 
   return mf;

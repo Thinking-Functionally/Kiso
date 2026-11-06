@@ -52,6 +52,12 @@ function checkNode(node: Node, idx: number): void {
     case 'js-object':
       return unsupported('js-object', idx, 'JS object literals are JS-only');
     case 'interop-call':
+      // `defmethod` expands to `(.addMethod mf dispatch-val fn)`
+      if (node.method === 'addMethod') {
+        walk(node.target);
+        node.args.forEach(walk);
+        return;
+      }
       return unsupported('interop-call', idx, 'JS interop; use host/ functions instead');
     case 'interop-field':
       return unsupported('interop-field', idx, 'JS interop; use host/ functions instead');
