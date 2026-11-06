@@ -67,18 +67,36 @@ export function parseCounts(out: string): Counts {
   return c;
 }
 
-export function runJs(src: string, loadNs: (ns: string) => { source: string } | null): string {
+function evalJs(src: string, loadNs: (ns: string) => { source: string } | null, lines: string[]): void {
   const code = compile(src, { target: 'js', loadNs, features: ['cljs'], testMacros: true })
     .code.replace(/^import '[^']+';\s*$/gm, '')
     .replace(/^import \* as (\w+) from '([^']+)';\s*$/gm, (_m, v: string, mod: string) => `const ${v} = ${mod === 'clojure/string.js' ? '__str' : mod === 'clojure/set.js' ? '__set' : mod === 'clojure/edn.js' ? '__edn' : '{}'};`)
     .replace(/^import \{([^}]*)\} from [^;]+;\s*$/gm, (_m, names: string) => `const {${names.replace(/ as /g, ': ')}} = __rt;`)
     .replace(/^export (let|const|function) /gm, '$1 ');
+  // eslint-disable-next-line no-new-func -- test-only: evaluating compiler output
+  new Function('__rt', '__str', '__set', '__edn', code)(rt, rtString, rtSet, rtEdn);
+}
+
+export function runJs(src: string, loadNs: (ns: string) => { source: string } | null): string {
   const lines: string[] = [];
   const orig = console.log;
   console.log = (...a: unknown[]) => void lines.push(a.join(' '));
   try {
-    // eslint-disable-next-line no-new-func -- test-only: evaluating compiler output
-    new Function('__rt', '__str', '__set', '__edn', code)(rt, rtString, rtSet, rtEdn);
+    evalJs(src, loadNs, lines);
+  } finally {
+    console.log = orig;
+  }
+  return lines.join('\n');
+}
+
+/** Like runJs, but waits `settleMs` so core.async callbacks and timeouts can finish. */
+export async function runJsAsync(src: string, loadNs: (ns: string) => { source: string } | null, settleMs = 50): Promise<string> {
+  const lines: string[] = [];
+  const orig = console.log;
+  console.log = (...a: unknown[]) => void lines.push(a.join(' '));
+  try {
+    evalJs(src, loadNs, lines);
+    await new Promise((r) => setTimeout(r, settleMs));
   } finally {
     console.log = orig;
   }

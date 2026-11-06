@@ -10,6 +10,10 @@ const sym = (n: string): Form => makeSymbol(null, n);
 const list = (...xs: Form[]): Form => makeList(xs);
 const say = (tag: string, ...rest: Form[]): Form => list(sym('println'), makeStr(`CLJT ${tag}`), ...rest);
 
+function isSym(f: Form, name: string): boolean {
+  return f.data.type === 'symbol' && f.data.ns === null && f.data.name === name;
+}
+
 function isThrown(f: Form): boolean {
   const it = f.data.type === 'list' ? f.data.items : null;
   const h = it?.[0]?.data;
@@ -26,7 +30,13 @@ function assertion(form: Form): Form {
     return list(sym('try'), body, say('fail', text),
       list(sym('catch'), makeKeyword(null, 'default'), sym('e__'), say('pass')));
   }
-  const check = list(sym('if'), form, say('pass'), say('fail', text));
+  const eqArgs = form.data.type === 'list' && form.data.items.length === 3 && isSym(form.data.items[0]!, '=') ? form.data.items.slice(1) : null;
+  // `(= expected actual)` is evaluated once and both values are reported on failure.
+  const check = eqArgs
+    ? list(sym('let'), makeVector([sym('a__'), eqArgs[0]!, sym('b__'), eqArgs[1]!]),
+        list(sym('if'), list(sym('='), sym('a__'), sym('b__')), say('pass'),
+          say('fail', text, makeStr('expected:'), list(sym('pr-str'), sym('a__')), makeStr('actual:'), list(sym('pr-str'), sym('b__')))))
+    : list(sym('if'), form, say('pass'), say('fail', text));
   if (as) return check;
   return list(sym('try'), check,
     list(sym('catch'), makeKeyword(null, 'default'), sym('e__'), say('error', text, list(sym('str'), sym('e__')))));

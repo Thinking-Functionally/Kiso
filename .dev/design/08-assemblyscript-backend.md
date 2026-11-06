@@ -191,7 +191,7 @@ Support status is tracked in `.dev/status/vars.yaml` (new `as` field: `full` / `
 ## core.async (D30)
 
 `go`, `go-loop`, `chan` (fixed / dropping / sliding buffers), `put!`, `take!`, `close!`, `offer!`,
-`alts!`, `timeout` work on both backends and are differential-tested (`test/codegen/core-async-cases.ts`).
+`alts!`, `timeout` work on both backends and are differential-tested (`test/kiso/core_async_test.cljs`).
 
 - **Transform**: `go`/`go-loop` expand to the special form `go*`; `src/analyzer/go.ts` CPS-transforms the
   analyzed Nodes (the JVM core.async also transforms an analyzer AST; CLJS transforms Forms instead).
