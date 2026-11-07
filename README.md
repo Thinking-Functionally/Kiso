@@ -6,7 +6,7 @@
 [![license](https://img.shields.io/github/license/clojurewasm/Kiso)](https://github.com/clojurewasm/Kiso/blob/main/LICENSE)
 [![GitHub Sponsors](https://img.shields.io/github/sponsors/chaploud?logo=githubsponsors&logoColor=white&color=ea4aaa)](https://github.com/sponsors/chaploud)
 
-A ClojureScript-to-JavaScript compiler written in TypeScript. Zero dependencies.
+A ClojureScript compiler written in TypeScript with two backends: JavaScript and (experimental) AssemblyScript/WebAssembly. Zero dependencies.
 
 **Kiso** (基礎) — *foundation* in Japanese.
 
@@ -73,6 +73,37 @@ npx vite
 {:a 1}                       ;; → hashMap(keyword("a"), 1)
 ```
 
+## Backends: JavaScript and AssemblyScript (experimental)
+
+Kiso has two code generators that share the reader, macros and analyzer. Pick one per program with `--target`.
+
+| | `js` (default) | `as` (AssemblyScript → WebAssembly) |
+|---|---|---|
+| Runs in | browsers, Node, Bun, Deno | Node/Bun CLI, Cloudflare Workers / workerd, any wasm host |
+| Output | ES modules | one `.wasm` (~30 KB for small programs) |
+| JS interop (`js/`, `.method`) | yes | no, use `host/` functions |
+| `try`/`catch`, `eval` | yes / no | no (`ex-info` traps; the host reports it) |
+| Regex | JS `RegExp` | in-wasm engine (no lookaround, backreferences or named groups) |
+| Speed | best for collection/string work | best for numeric and call-heavy code; see `packages/kiso/bench` |
+
+Use **JS** for anything that touches the DOM or the JS ecosystem (the `su` framework, Vite apps).
+Use **AS** for CLIs and serverless handlers where a small, sandboxed, portable artifact matters.
+Shared `.cljc` code (reader conditionals `:as` / `:cljs`) can run on both: `test/kiso/*_test.cljs` runs every
+test on both backends.
+
+```bash
+npx kiso build app.cljs -o app.wasm          # needs `assemblyscript` installed
+npx kiso run app.cljs -- arg1 arg2           # build + run -main on Node (host/args, host/env, host/fetch …)
+npx kiso build handler.cljs --worker         # app.wasm + worker.js for Cloudflare Workers
+npx kiso serve handler.cljs --port 8787      # same handler over HTTP on Node
+```
+
+The `host/` namespace is the wasm module's only door to the outside world: `host/args`, `env`, `read-file`,
+`write-file`, `stdin`, `exit`, `now`, `fetch` (async, usable in go blocks), `json-parse` and `json-stringify`
+(the JSON functions also work on the JS backend). Examples: [`examples/cli-todo`](examples/cli-todo/) (CLI) and
+[`examples/fullstack`](examples/fullstack/) (shared code, wasm API, JS client). Design notes and the exact supported
+subset: [`.dev/design/08-assemblyscript-backend.md`](.dev/design/08-assemblyscript-backend.md).
+
 ## Compiler API
 
 ```ts
@@ -91,6 +122,8 @@ See [docs/](docs/README.md) for the full guide, API reference, and cookbook.
 ## Examples
 
 - [Task Manager](examples/task-manager/) — full app with components, context, and styling
+- [CLI todo](examples/cli-todo/) — command-line app on the AssemblyScript backend
+- [Full-stack](examples/fullstack/) — shared `.cljc`, wasm API (Node or Cloudflare Workers) and a JS client
 
 ## Development
 

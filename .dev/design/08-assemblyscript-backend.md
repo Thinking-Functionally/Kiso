@@ -1,8 +1,8 @@
 # 08 — AssemblyScript Backend
 
-Status: **M0–M6 complete, plus parity work D20–D52** (collections, lazy seq, records/protocols, core.async, regex, read-string, arrays, multimethods). Remaining gaps are listed under *Current Support* below.
+Status: **M0–M6 complete, plus parity work D20–D65** (collections, lazy seq, records/protocols, core.async, regex, read-string, arrays, multimethods, `host/fetch`, serverless on workerd, CLI and full-stack examples, custom hierarchies, `type`). Remaining gaps are listed under *Current Support* below.
 
-## Current Support (D52)
+## Current Support (D65)
 
 Both backends run the same `test/kiso/*_test.cljs` suite (`clojure.test`); `;; targets: js` marks JS-only files.
 
@@ -11,13 +11,28 @@ Supported on AS: everything in the Explicit Subset except the rows below, plus
 - regex via an in-wasm backtracking engine (`as-runtime/kiso-regex.ts`, D49): classes, anchors, groups, alternation, greedy/lazy quantifiers, leading `(?i)(?s)(?m)`, 5M step limit against ReDoS. Lookaround, backreferences and named groups abort at construction;
 - `satisfies?` / `instance?` resolved at compile time (closed world, D50);
 - mutable arrays (`array`, `aget`, `aset`, `alength`, `aclone`, `into-array`, `to-array`, D51);
-- `defmulti` / `defmethod` through a runtime `MultiFn` registry with `:default`, global hierarchy (`derive`, `isa?`, `parents`, `ancestors`, `descendants`, `underive`) and `prefer-method` (D52, D54); no explicit/custom hierarchies;
+- `defmulti` / `defmethod` through a runtime `MultiFn` registry with `:default`, global hierarchy (`derive`, `isa?`, `parents`, `ancestors`, `descendants`, `underive`) and `prefer-method` (D52, D54); custom hierarchies (`make-hierarchy`, h-arity `derive`/`underive`/`isa?`/`parents`/`ancestors`/`descendants`, D63; no `defmulti :hierarchy`);
+- host layer (`host/args env read-file write-file stdin exit now json-parse json-stringify`, and channel-based `host/fetch` usable from go blocks, D57); `host/json-*` also work on the JS backend (D61); `parse-long`/`parse-double` (D58);
+- `type` returns a symbol naming the runtime type (`Number`, `PersistentVector`, a record's name; D62), not a JS constructor;
 - `case` without a default, `implements?`, `extend-protocol`, `map` over 3+ collections, metadata carried through `conj`/`assoc`/`dissoc`/`disj`/`pop`/`update`/`empty` (D54, D55).
 
 Not supported on AS (compile error or abort with a clear message):
 - `try` / `catch` / `finally` / `throw`: AssemblyScript has no catchable exceptions (`ex-info` aborts). Revisit when AS supports the wasm exception-handling proposal;
-- `type` (returns a JS constructor), `eval` (needs the compiler at runtime);
+- comparing `type` with `js/Number` etc., and `eval` (needs the compiler at runtime);
 - JS interop (`js/`, `.method`, `new` of non-module types): wasm has no JS host inside the module; use `host/` functions.
+
+## try/catch on AS: evaluation (D66, decision: not implemented)
+
+Today `try`/`catch`/`finally`/`throw` is a compile error and `ex-info` aborts (a wasm trap). The host turns a trap
+into an error at the boundary (worker: HTTP 500 "kiso error: …", CLI: non-zero exit). The worker host instantiates a fresh module per request, so a trap cannot corrupt later requests.
+
+Options considered:
+1. **wasm exception-handling proposal.** The right long-term answer, but AssemblyScript has no `try/catch` codegen (it lowers `throw` to `abort`). Blocked on upstream.
+2. **Sentinel/pending-exception flag.** `throw` sets a global and returns `NIL`; every call site checks the flag and unwinds. Works with today's toolchain but adds a check after every call (size and speed cost on the hot path, roughly the cost of the numeric specialization we just won), and every runtime function that calls user code (`map`, `reduce`, multimethods, go blocks) must propagate it. Large, invasive change.
+3. **Result-returning host calls.** Keep `ex-info` fatal; make fallible host APIs return `{:error ...}` (e.g. `host/json-parse`, `host/read-file`, `host/fetch` already reject at the host). Small and covers the real use cases (I/O and parsing failures).
+4. **Instance-per-request recovery.** Abort at the boundary and instantiate a fresh module for the next request. Cheap (modules are ~30 KB) and gives true isolation.
+
+Decision: do not add try/catch now. Use (4) for serverless (already how the worker host works: one instance per request), and (3) for the API surface as needed. Revisit (1) when AssemblyScript supports exception handling; (2) only if a concrete program cannot be expressed with result values.
 
 ## M3 Outcome
 
