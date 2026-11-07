@@ -1,10 +1,12 @@
-import { instantiateCore, ExitSignal } from './core.js';
+import { instantiateCore, ExitSignal, type FetchFn } from './core.js';
 
 type Env = Record<string, unknown>;
 
 export type WorkerOptions = {
   /** Name of the wasm export that handles a request (default `kiso_handle`). */
   entry?: string;
+  /** Backs `host/fetch` inside handlers (defaults to the platform `fetch`). */
+  fetch?: FetchFn;
 };
 
 /**
@@ -34,10 +36,10 @@ export function createWorker(module: WebAssembly.Module, opts: WorkerOptions = {
       for (const [k, v] of Object.entries(env)) if (typeof v === 'string') stringEnv[k] = v;
 
       let log = '';
-      const inst = await instantiateCore(module, { env: stringEnv, write: (s) => void (log += s), now: Date.now });
+      const inst = await instantiateCore(module, { env: stringEnv, write: (s) => void (log += s), now: Date.now, fetch: opts.fetch });
       if (typeof inst.exports[entry] !== 'function') return new Response(`module has no ${entry} export`, { status: 500 });
       try {
-        return toResponse(inst.callString(entry, reqJson));
+        return toResponse(await inst.callStringAsync(entry, reqJson));
       } catch (e) {
         if (e instanceof ExitSignal) return new Response('exit', { status: 500 });
         return new Response(`kiso error: ${(e as Error).message}`, { status: 500 });

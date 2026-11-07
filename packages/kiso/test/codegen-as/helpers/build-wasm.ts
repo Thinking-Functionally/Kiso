@@ -8,7 +8,7 @@ import { instantiateKiso, type NodeHostOptions } from '../../../src/host/node.js
 export type { BuildOptions };
 export { buildWasm };
 
-export type Instance = { exports: Record<string, (...a: number[]) => number | void>; output: string; runMain(): number };
+export type Instance = { exports: Record<string, (...a: number[]) => number | void>; output: string; runMain(): number; runMainAsync(): Promise<number> };
 
 export async function runWasm(bytes: Uint8Array, host: NodeHostOptions = {}): Promise<Instance> {
   const output = { text: '' };
@@ -19,6 +19,7 @@ export async function runWasm(bytes: Uint8Array, host: NodeHostOptions = {}): Pr
       return output.text;
     },
     runMain: () => inst.runMain(),
+    runMainAsync: () => inst.runMainAsync(),
   };
 }
 

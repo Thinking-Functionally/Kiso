@@ -63,3 +63,25 @@ describe('worker entry (createWorker)', () => {
     expect([nf.status, await nf.text()]).toEqual([404, 'nope']);
   });
 });
+
+describe('worker handler that awaits host/fetch', () => {
+  const SRC = `(ns app (:require [clojure.core.async :refer [go <!]]))
+(defn handle [req]
+  (go (let [up (<! (host/fetch (str "http://upstream" (:path req)) {:method "GET"}))]
+        {:status (:status up) :headers {:content-type "text/plain"} :body (str "via-kiso:" (:body up))})))
+`;
+  it('resolves the go-block response after the upstream request completes', async () => {
+    const { code } = compile(SRC, { target: 'as', worker: 'handle' });
+    const mod = await WebAssembly.compile(await buildWasm(code, {}));
+    const seen: string[] = [];
+    const w = createWorker(mod, { fetch: async (u) => (seen.push(u), { status: 202, headers: {}, body: 'up:' + u }) });
+    const res = await w.fetch(new Request('http://x/items'), {});
+    expect([res.status, await res.text(), res.headers.get('content-type')]).toEqual([202, 'via-kiso:up:http://upstream/items', 'text/plain']);
+    expect(seen).toEqual(['http://upstream/items']);
+  });
+  it('plain sync handlers still work and need no fetch', async () => {
+    const { code } = compile(APP, { target: 'as', worker: 'handle' });
+    const w = createWorker(await WebAssembly.compile(await buildWasm(code, {})), { fetch: async () => { throw new Error('unused'); } });
+    expect(await (await w.fetch(new Request('http://x/'), {})).text()).toBe('hello');
+  });
+});

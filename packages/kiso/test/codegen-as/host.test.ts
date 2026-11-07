@@ -49,3 +49,34 @@ describe('host/ functions (Node host)', () => {
     await expect(withHost('(host/env)')).rejects.toThrow(/expects 1/);
   });
 });
+
+describe('host/fetch (async, channel based)', () => {
+  const NS = '(ns t (:require [clojure.core.async :refer [go <!]]))\n';
+  const fakeFetch = async (url: string, o: { method?: string; body?: string }) => ({ status: 200, headers: { 'x-a': '1' }, body: `${o.method ?? 'GET'}:${url}:${o.body ?? ''}` });
+
+  it('parks a go block until the host resolves the request', async () => {
+    const r = await withHost(`${NS}(defn -main [] (go (let [r (<! (host/fetch "http://a/x" {:method "POST" :body "b"}))] (prn (:status r) (:body r) (get-in r [:headers :x-a])))))`, { fetch: fakeFetch });
+    await r.runMainAsync();
+    expect(r.output).toBe('200 "POST:http://a/x:b" "1"\n');
+  });
+  it('runs concurrent requests and resumes in completion order', async () => {
+    const delays: Record<string, number> = { slow: 30, fast: 1 };
+    const f = async (url: string) => {
+      await new Promise((res) => setTimeout(res, delays[url]));
+      return { status: 200, headers: {}, body: url };
+    };
+    const r = await withHost(`${NS}(defn -main [] (let [a (host/fetch "slow" {}) b (host/fetch "fast" {})] (go (prn (:body (<! a)))) (go (prn (:body (<! b))))))`, { fetch: f });
+    await r.runMainAsync();
+    expect(r.output).toBe('"fast"\n"slow"\n');
+  });
+  it('delivers a network failure as {:error msg} instead of throwing', async () => {
+    const r = await withHost(`${NS}(defn -main [] (go (prn (:error (<! (host/fetch "u" {}))))))`, { fetch: async () => { throw new Error('boom'); } });
+    await r.runMainAsync();
+    expect(r.output).toBe('"boom"\n');
+  });
+  it('sequential fetches inside one go block', async () => {
+    const r = await withHost(`${NS}(defn -main [] (go (let [a (<! (host/fetch "1" {})) b (<! (host/fetch "2" {}))] (prn (str (:body a) (:body b))))))`, { fetch: async (u: string) => ({ status: 200, headers: {}, body: u }) });
+    await r.runMainAsync();
+    expect(r.output).toBe('"12"\n');
+  });
+});

@@ -5,7 +5,12 @@ export class ExitSignal extends Error {
   }
 }
 
+export type FetchResult = { status: number; headers: Record<string, string>; body: string };
+export type FetchFn = (url: string, opts: { method?: string; headers?: Record<string, string>; body?: string }) => Promise<FetchResult>;
+
 export type HostOptions = {
+  /** Backs `host/fetch`. Defaults to the global `fetch` when the platform has one. */
+  fetch?: FetchFn;
   args?: string[];
   env?: Record<string, string | undefined>;
   stdin?: () => string;
@@ -38,7 +43,18 @@ export type KisoInstance = {
   runMain(): number;
   /** Calls an exported `(string): string` function (e.g. `kiso_handle`), marshalling across linear memory. */
   callString(name: string, arg: string): string;
+  /** Like `runMain`, but also awaits `host/fetch` requests that go blocks are parked on. */
+  runMainAsync(): Promise<number>;
+  /** Like `callString`, for handlers that await `host/fetch`; resolves with the final `kiso_result`. */
+  callStringAsync(name: string, arg: string): Promise<string>;
 };
+
+async function defaultFetch(url: string, o: { method?: string; headers?: Record<string, string>; body?: string }): Promise<FetchResult> {
+  const res = await fetch(url, { method: o.method, headers: o.headers, body: o.body });
+  const headers: Record<string, string> = {};
+  res.headers.forEach((v, k) => (headers[k] = v));
+  return { status: res.status, headers, body: await res.text() };
+}
 
 type RuntimeExports = { __new(size: number, id: number): number; _start(): void };
 
@@ -67,6 +83,9 @@ export async function instantiateCore(source: Uint8Array | WebAssembly.Module, o
   const write = opts.write ?? (() => {});
   const readFile = opts.readFile ?? (() => { throw new Error('no fs'); });
   const writeFile = opts.writeFile ?? (() => { throw new Error('no fs'); });
+
+  const pending = new Map<number, Promise<{ id: number; json: string }>>();
+  const doFetch: FetchFn | undefined = opts.fetch ?? (typeof fetch === 'function' ? defaultFetch : undefined);
 
   const imports = {
     env: {
@@ -104,6 +123,14 @@ export async function instantiateCore(source: Uint8Array | WebAssembly.Module, o
       },
       now: () => (opts.now ?? Date.now)(),
       sleep: (ms: number) => (opts.sleep ?? blockingSleep)(ms),
+      fetch_start: (id: number, url: number, o: number) => {
+        const run = async () => {
+          if (!doFetch) throw new Error('no fetch');
+          const parsed = JSON.parse(read(o) || '{}') as { method?: string; headers?: Record<string, string>; body?: string };
+          return JSON.stringify(await doFetch(read(url), parsed));
+        };
+        pending.set(id, run().then((json) => ({ id, json }), (e: unknown) => ({ id, json: JSON.stringify({ error: e instanceof Error ? e.message : String(e) }) })));
+      },
     },
   };
   const instance: WebAssembly.Instance =
@@ -121,11 +148,36 @@ export async function instantiateCore(source: Uint8Array | WebAssembly.Module, o
     }
   };
   const started = guarded(() => rt!._start());
+  const resume = exports.kiso_resume as unknown as ((id: number, p: number) => void) | undefined;
+  // Awaits parked requests one by one; each resume may park new ones
+  const settle = async (): Promise<number> => {
+    while (pending.size > 0) {
+      const done = await Promise.race(pending.values());
+      pending.delete(done.id);
+      const r = guarded(() => resume!(done.id, alloc(done.json)));
+      if (r.code !== 0) return r.code;
+    }
+    return 0;
+  };
   return {
     exports,
     runMain() {
       if (started.code !== 0) return started.code;
       return typeof exports.main === 'function' ? guarded(() => exports.main!()).code : 0;
+    },
+    async runMainAsync() {
+      if (started.code !== 0) return started.code;
+      const first = typeof exports.main === 'function' ? guarded(() => exports.main!()).code : 0;
+      return first !== 0 ? first : settle();
+    },
+    async callStringAsync(name, arg) {
+      const f = exports[name] as unknown as ((p: number) => number) | undefined;
+      if (typeof f !== 'function') throw new Error(`wasm export ${name} not found`);
+      const first = read(f(alloc(arg)));
+      if (pending.size === 0 && first !== '') return first;
+      const code = await settle();
+      if (code !== 0) throw new ExitSignal(code);
+      return read((exports.kiso_result as unknown as () => number)());
     },
     callString(name, arg) {
       const f = exports[name] as unknown as ((p: number) => number) | undefined;

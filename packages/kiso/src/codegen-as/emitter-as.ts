@@ -245,7 +245,7 @@ const HOST_FNS: Record<string, { fn: string; arity: number }> = {
 const ASYNC_OPS = new Set(['chan', 'take!', 'put!', 'close!', 'offer!', 'timeout', 'go-start', 'go-dispatch', 'go-alts']);
 
 const RUNTIME_IMPORTS = [
-  'kdrain', 'kchan0', 'kchan1', 'kbuffer', 'kdroppingBuffer', 'kslidingBuffer', 'kchTake1', 'kchTake2', 'kchPut2', 'kchPut3', 'kchClose', 'kchOffer', 'ktimeout', 'kgoStart', 'kgoDispatch', 'kgoAlts',
+  'kdrain', 'kfetch', 'kfetchPending', 'kfetchResume', 'ksetResult', 'kresultValue', 'kchan0', 'kchan1', 'kbuffer', 'kdroppingBuffer', 'kslidingBuffer', 'kchTake1', 'kchTake2', 'kchPut2', 'kchPut3', 'kchClose', 'kchOffer', 'ktimeout', 'kgoStart', 'kgoDispatch', 'kgoAlts',
   'hostArgs', 'hostEnvGet', 'hostReadFileV', 'hostWriteFileV', 'hostStdinV', 'hostExitV', 'hostNowV',
   'Value', 'Fn', 'Num', 'Str', 'Kw', 'NIL', 'TRUE', 'FALSE', 'bool_', 'truthy', 'asFn', 'arityError', 'throwValue', 'toF64', 'mkNum',
   'add', 'sub', 'mul', 'div', 'neg', 'inc', 'dec', 'rem', 'mod', 'lt', 'gt', 'lte', 'gte', 'isZero', 'isPos', 'isNeg', 'eq',
@@ -513,6 +513,12 @@ class Emitter {
   }
 
   private hostCall(name: string, args: LExpr[]): string {
+    if (name === 'host/fetch') {
+      if (args.length < 1 || args.length > 2) return unsupported(name, `expects 1 or 2 arguments, got ${args.length}`);
+      this.usesAsync = true;
+      const [url, opts = 'EMPTY_MAP'] = this.args(args);
+      return `kfetch(${url}, jsonStringifyV(${opts}))`;
+    }
     const spec = HOST_FNS[name];
     if (!spec) return unsupported(name, `unknown host function; available: ${Object.keys(HOST_FNS).join(', ')}`);
     if (args.length !== spec.arity) return unsupported(name, `expects ${spec.arity} argument(s), got ${args.length}`);
@@ -965,9 +971,31 @@ class Emitter {
     return [`export function ${wasm}(${names.map((n) => `${n}: f64`).join(', ')}): f64 {`, `  return toF64(${call(names)});`, '}'];
   }
 
+  private resumeEntry(): string[] {
+    return [
+      'export function kiso_pending(): i32 {',
+      '  return kfetchPending();',
+      '}',
+      'export function kiso_resume(id: i32, json: string): void {',
+      '  kfetchResume(id, jsonParse(json));',
+      '}',
+      '',
+    ];
+  }
+
   private workerEntry(handler: string): string[] {
     if (!this.globals.has(handler)) unsupported(`worker handler ${handler}`, 'not defined in this module');
-    return ['export function kiso_handle(req: string): string {', `  return jsonStringify(callV1(g_${mangle(handler)}, jsonParse(req)));`, '}', ''];
+    return [
+      'export function kiso_handle(req: string): string {',
+      `  ksetResult(callV1(g_${mangle(handler)}, jsonParse(req)));`,
+      '  kdrain();',
+      '  return kfetchPending() > 0 ? "" : jsonStringify(kresultValue());',
+      '}',
+      'export function kiso_result(): string {',
+      '  return jsonStringify(kresultValue());',
+      '}',
+      '',
+    ];
   }
 
   emit(exports: string[], worker?: string): string {
@@ -978,7 +1006,7 @@ class Emitter {
     const typeClasses = [...this.types.values()].flatMap((t) => [...this.typeClass(t), '']);
     const protoClasses = [...this.protoFns].flatMap(([g, p]) => [...this.protocolClass(g, p.protocol, p.method), '']);
     const satFns = [...this.satUsed].flatMap((p) => [...this.satFn(p), '']);
-    const wrappers = [...exports.flatMap((n) => [...this.exportWrapper(n), '']), ...(worker ? this.workerEntry(worker) : [])];
+    const wrappers = [...exports.flatMap((n) => [...this.exportWrapper(n), '']), ...(worker ? this.workerEntry(worker) : []), ...(this.usesAsync || worker ? this.resumeEntry() : [])];
     const header = [
       `import { ${RUNTIME_IMPORTS.join(', ')} } from "${RUNTIME_MODULE}";`,
       'import { jsonParse, jsonStringify, jsonParseV, jsonStringifyV, readStringV } from "./kiso-json";',

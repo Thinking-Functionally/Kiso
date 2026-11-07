@@ -1832,6 +1832,8 @@ export function ksortBy3(kf: Value, cmp: Value, c: Value): Value {
 
 @external("host", "sleep")
 declare function hostSleep(ms: f64): void;
+@external("host", "fetch_start")
+declare function hostFetchStart(id: i32, url: string, opts: string): void;
 
 class Flag {
   done: bool = false;
@@ -1868,6 +1870,9 @@ export class BufSpec extends Value {
 const taskQueue: Array<Task> = new Array<Task>();
 const timers: Array<Timer> = new Array<Timer>();
 let draining: bool = false;
+const fetchWait = new Map<i32, Chan>();
+let fetchSeq: i32 = 0;
+let handlerRes: Value = NIL;
 
 function enq(f: Value, a: Value, hasArg: bool): void {
   if (f === NIL) return;
@@ -1884,6 +1889,8 @@ export function kdrain(): void {
       else callV0(t.f);
     }
     taskQueue.length = 0;
+    // Pending host requests cannot complete inside this call: return so the host can await them, then kiso_resume
+    if (fetchWait.size > 0) break;
     if (timers.length == 0) break;
     let best = 0;
     for (let i = 1; i < timers.length; i++) if (timers[i].at < timers[best].at) best = i;
@@ -2074,6 +2081,36 @@ export function kchOffer(c: Value, v: Value): Value {
   if (!canPut(ch) || ch.closed) return FALSE;
   doPut(ch, v, NIL, null);
   return TRUE;
+}
+
+export function kfetch(url: Value, optsJson: Value): Value {
+  const c = newChan(1, 1);
+  const id = ++fetchSeq;
+  fetchWait.set(id, c);
+  hostFetchStart(id, toStr(url, false), toStr(optsJson, false));
+  return c;
+}
+export function kfetchPending(): i32 {
+  return fetchWait.size;
+}
+export function kfetchResume(id: i32, v: Value): void {
+  if (!fetchWait.has(id)) return;
+  const c = fetchWait.get(id);
+  fetchWait.delete(id);
+  doPut(c, v, NIL, null);
+  chClose(c);
+  kdrain();
+}
+export function ksetResult(v: Value): void {
+  handlerRes = v;
+}
+// A go-block result is a closed channel holding its value; anything else is the value itself
+export function kresultValue(): Value {
+  if (handlerRes instanceof Chan) {
+    const c = changetype<Chan>(handlerRes);
+    return c.buf.length > 0 ? c.buf[0] : NIL;
+  }
+  return handlerRes;
 }
 
 export function ktimeout(ms: Value): Value {
