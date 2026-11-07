@@ -859,7 +859,7 @@ const RUNTIME_FUNCTIONS = new Set([
   // Metadata
   'meta', 'with-meta', 'vary-meta', 'alter-meta!', 'reset-meta!',
   // I4: contains? and subs
-  'contains?', 'subs',
+  'contains?', 'subs', 'parse-long', 'parse-double',
   // I3: IFn invoke for sets/maps/vectors in fn position
   'invoke',
   // Transducer support

@@ -52,11 +52,11 @@ export async function buildCommand(
   return out;
 }
 
-/** `kiso run <file.cljs>`: build in memory and run `-main` on the Node host. Returns the exit code. */
+/** `kiso run <file.cljs>`: build in memory and run `-main` on the Node host, awaiting `host/fetch`. Returns the exit code. */
 export async function runCommand(o: Common & { programArgs: string[] }): Promise<number> {
   const bytes = await toWasm(o);
   const inst = await instantiateKiso(bytes, { args: o.programArgs });
-  return inst.runMain();
+  return inst.runMainAsync();
 }
 
 function workerEntrySource(wasmFile: string): string {

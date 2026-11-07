@@ -217,6 +217,8 @@ const CORE_OPS: Record<string, CoreOp> = {
   'ex-info': { kind: 'value', fn: 'kexInfo', arity: 2 },
   'ex-message': { kind: 'value', fn: 'kexMessage', arity: 1 },
   'ex-data': { kind: 'value', fn: 'kexData', arity: 1 },
+  'parse-long': { kind: 'value', fn: 'kparseLong', arity: 1 },
+  'parse-double': { kind: 'value', fn: 'kparseDouble', arity: 1 },
 };
 // Runtime fns taking all arguments as one Array<Value>.
 // Transducer-returning arities are implemented by prelude functions in Kiso.
@@ -245,7 +247,7 @@ const HOST_FNS: Record<string, { fn: string; arity: number }> = {
 const ASYNC_OPS = new Set(['chan', 'take!', 'put!', 'close!', 'offer!', 'timeout', 'go-start', 'go-dispatch', 'go-alts']);
 
 const RUNTIME_IMPORTS = [
-  'kdrain', 'kfetch', 'kfetchPending', 'kfetchResume', 'ksetResult', 'kresultValue', 'kchan0', 'kchan1', 'kbuffer', 'kdroppingBuffer', 'kslidingBuffer', 'kchTake1', 'kchTake2', 'kchPut2', 'kchPut3', 'kchClose', 'kchOffer', 'ktimeout', 'kgoStart', 'kgoDispatch', 'kgoAlts',
+  'kdrain', 'kparseLong', 'kparseDouble', 'kfetch', 'kfetchPending', 'kfetchResume', 'ksetResult', 'kresultValue', 'kchan0', 'kchan1', 'kbuffer', 'kdroppingBuffer', 'kslidingBuffer', 'kchTake1', 'kchTake2', 'kchPut2', 'kchPut3', 'kchClose', 'kchOffer', 'ktimeout', 'kgoStart', 'kgoDispatch', 'kgoAlts',
   'hostArgs', 'hostEnvGet', 'hostReadFileV', 'hostWriteFileV', 'hostStdinV', 'hostExitV', 'hostNowV',
   'Value', 'Fn', 'Num', 'Str', 'Kw', 'NIL', 'TRUE', 'FALSE', 'bool_', 'truthy', 'asFn', 'arityError', 'throwValue', 'toF64', 'mkNum',
   'add', 'sub', 'mul', 'div', 'neg', 'inc', 'dec', 'rem', 'mod', 'lt', 'gt', 'lte', 'gte', 'isZero', 'isPos', 'isNeg', 'eq',

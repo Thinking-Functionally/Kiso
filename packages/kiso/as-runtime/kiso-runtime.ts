@@ -2298,6 +2298,42 @@ export function isTrue(v: Value): bool {
 export function isFalse(v: Value): bool {
   return v === FALSE;
 }
+function isDigit(c: i32): bool {
+  return c >= 48 && c <= 57;
+}
+export function kparseLong(v: Value): Value {
+  if (!(v instanceof Str)) abort("parse-long: expected a string");
+  const s = changetype<Str>(v).v;
+  let i = 0;
+  const n = s.length;
+  if (i < n && (s.charCodeAt(i) == 43 || s.charCodeAt(i) == 45)) i++;
+  if (i >= n) return NIL;
+  for (let j = i; j < n; j++) if (!isDigit(s.charCodeAt(j))) return NIL;
+  return mkNum(parseFloat(s));
+}
+export function kparseDouble(v: Value): Value {
+  if (!(v instanceof Str)) abort("parse-double: expected a string");
+  const s = changetype<Str>(v).v;
+  const n = s.length;
+  let i = 0;
+  if (i < n && (s.charCodeAt(i) == 43 || s.charCodeAt(i) == 45)) i++;
+  let digits = 0;
+  while (i < n && isDigit(s.charCodeAt(i))) { i++; digits++; }
+  if (i < n && s.charCodeAt(i) == 46) {
+    i++;
+    while (i < n && isDigit(s.charCodeAt(i))) { i++; digits++; }
+  }
+  if (digits == 0) return NIL;
+  if (i < n && (s.charCodeAt(i) == 101 || s.charCodeAt(i) == 69)) {
+    i++;
+    if (i < n && (s.charCodeAt(i) == 43 || s.charCodeAt(i) == 45)) i++;
+    let ed = 0;
+    while (i < n && isDigit(s.charCodeAt(i))) { i++; ed++; }
+    if (ed == 0) return NIL;
+  }
+  if (i != n) return NIL;
+  return mkNum(parseFloat(s));
+}
 export function kname(v: Value): Value {
   if (v instanceof Kw) return new Str(changetype<Kw>(v).name);
   if (v instanceof Sym) return new Str(changetype<Sym>(v).name);

@@ -91,7 +91,7 @@ export {
   sorted_map, sorted_map_p,
   sorted_set, sorted_set_p,
   sorted_map_by, sorted_set_by, subseq, rsubseq,
-  contains_p, subs, invoke,
+  contains_p, subs, invoke, parse_long, parse_double,
   // Transducer support
   Reduced, reduced, reduced_p, unreduced, ensure_reduced,
   completing, transduce, capture_out,

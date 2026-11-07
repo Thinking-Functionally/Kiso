@@ -221,6 +221,17 @@ export function contains_p(coll: unknown, key: unknown): boolean {
   return false;
 }
 
+const LONG_RE = /^[+-]?\d+$/;
+const DOUBLE_RE = /^[+-]?(NaN|Infinity|(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?)$/;
+export function parse_long(s: unknown): number | null {
+  if (typeof s !== 'string') throw new TypeError(`Expected string, got ${s === null ? 'nil' : typeof s}`);
+  return LONG_RE.test(s) ? parseInt(s, 10) : null;
+}
+export function parse_double(s: unknown): number | null {
+  if (typeof s !== 'string') throw new TypeError(`Expected string, got ${s === null ? 'nil' : typeof s}`);
+  return DOUBLE_RE.test(s) ? parseFloat(s) : null;
+}
+
 export function subs(s: unknown, start: unknown, end?: unknown): string {
   const str = s as string;
   const startIdx = start as number;
