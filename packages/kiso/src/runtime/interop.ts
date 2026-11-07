@@ -9,6 +9,7 @@ import { isHashSet, PersistentHashSet } from './hash-set.js';
 import { isList, first, rest, count } from './list.js';
 import { keyword } from './keyword.js';
 import { toArray } from './seq.js';
+import { LazySeq } from './lazy-seq.js';
 
 /** Convert Kiso persistent data to plain JS. */
 export function clj_to_js(x: unknown): unknown {
@@ -53,6 +54,10 @@ export function clj_to_js(x: unknown): unknown {
     const arr: unknown[] = [];
     s.forEach((key) => arr.push(clj_to_js(key)));
     return arr;
+  }
+
+  if (x instanceof LazySeq) {
+    return (toArray(x as any) as unknown[]).map(clj_to_js);
   }
 
   return x;

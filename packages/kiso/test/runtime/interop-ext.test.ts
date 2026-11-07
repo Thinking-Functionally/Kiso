@@ -2,11 +2,12 @@
  * Tests for extended JS interop: bean, js-obj, js-array.
  */
 import { describe, it, expect } from 'vitest';
-import { bean, js_obj, js_array, into_array } from '../../src/runtime/interop.js';
+import { bean, js_obj, js_array, into_array, clj_to_js } from '../../src/runtime/interop.js';
 import { keyword, isKeyword } from '../../src/runtime/keyword.js';
 import { vector } from '../../src/runtime/vector.js';
 import { hashMap, PersistentHashMap } from '../../src/runtime/hash-map.js';
 import { list } from '../../src/runtime/list.js';
+import { LazySeq } from '../../src/runtime/lazy-seq.js';
 
 // ── bean ──
 
@@ -100,5 +101,14 @@ describe('js_array / into_array', () => {
   it('handles empty vector', () => {
     const result = into_array(vector()) as unknown[];
     expect(result).toEqual([]);
+  });
+});
+
+// ── clj_to_js on lazy seqs ──
+
+describe('clj_to_js', () => {
+  it('converts a LazySeq (e.g. from map) to a plain array, recursively', () => {
+    const lazy = new LazySeq(() => list(vector(keyword('a'), 1), vector(keyword('b'), 2)));
+    expect(clj_to_js(lazy)).toEqual([['a', 1], ['b', 2]]);
   });
 });
