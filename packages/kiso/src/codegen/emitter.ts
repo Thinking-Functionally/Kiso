@@ -799,7 +799,7 @@ const RUNTIME_FUNCTIONS = new Set([
   '=', 'not=', '-', '+', '*', '/', 'mod',
   '>', '<', '>=', '<=',
   'defprotocol', 'protocolFn',
-  'defmultiFn', 'prefer-method', 'derive', 'underive', 'parents', 'ancestors', 'descendants', 'isa?',
+  'defmultiFn', 'prefer-method', 'derive', 'underive', 'parents', 'ancestors', 'descendants', 'isa?', 'make-hierarchy',
   'clj->js', 'js->clj', 'bean', 'js-obj', 'js-array', 'into-array', 'to-array',
   // Map operations
   'get-in', 'assoc-in', 'update', 'update-in',

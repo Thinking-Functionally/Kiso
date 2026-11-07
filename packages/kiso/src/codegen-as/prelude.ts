@@ -237,6 +237,36 @@ const PRELUDE = `
 (defn cljset-difference [a & more]
   (reduce (fn [acc s] (reduce disj acc s)) a more))
 (defn cljset-subset? [a b] (every? (fn [x] (contains? b x)) a))
+(defn make-hierarchy [] {:parents {} :descendants {} :ancestors {}})
+(defn hierarchy-link [m source sources target targets]
+  (reduce (fn [ret k] (assoc ret k (reduce conj (get targets k #{}) (cons target (get targets target)))))
+          m (cons source (get sources source))))
+(defn isa-h? [h child parent]
+  (or (= child parent)
+      (contains? (get (:ancestors h) child #{}) parent)
+      (and (vector? parent) (vector? child) (= (count parent) (count child))
+           (loop [i 0]
+             (if (= i (count parent))
+               true
+               (if (isa-h? h (nth child i) (nth parent i)) (recur (inc i)) false))))))
+(defn derive-h [h tag parent]
+  (if (contains? (get (:parents h) tag #{}) parent)
+    h
+    (if (= tag parent)
+      (throw (ex-info "derive: tag and parent must differ" {}))
+      (if (or (contains? (get (:ancestors h) tag #{}) parent) (contains? (get (:ancestors h) parent #{}) tag))
+        (throw (ex-info "derive: cyclic hierarchy" {}))
+        {:parents (assoc (:parents h) tag (conj (get (:parents h) tag #{}) parent))
+         :ancestors (hierarchy-link (:ancestors h) tag (:descendants h) parent (:ancestors h))
+         :descendants (hierarchy-link (:descendants h) parent (:ancestors h) tag (:descendants h))}))))
+(defn underive-h [h tag parent]
+  (let [rest-ps (disj (get (:parents h) tag #{}) parent)
+        pm (if (seq rest-ps) (assoc (:parents h) tag rest-ps) (dissoc (:parents h) tag))]
+    (reduce (fn [acc e] (reduce (fn [a p] (derive-h a (key e) p)) acc (val e)))
+            (make-hierarchy) pm)))
+(defn parents-h [h tag] (not-empty (get (:parents h) tag)))
+(defn ancestors-h [h tag] (not-empty (get (:ancestors h) tag)))
+(defn descendants-h [h tag] (not-empty (get (:descendants h) tag)))
 (defn cljset-superset? [a b] (cljset-subset? b a))
 (defn cljset-select [pred s] (reduce (fn [acc x] (if (pred x) acc (disj acc x))) s s))
 `;
@@ -247,6 +277,12 @@ const XF_SHAPES: Record<string, { len: number; fn: string }> = {
   filter: { len: 2, fn: 'filter-xf' },
   take: { len: 2, fn: 'take-xf' },
   into: { len: 4, fn: 'into-xf' },
+  derive: { len: 4, fn: 'derive-h' },
+  underive: { len: 4, fn: 'underive-h' },
+  'isa?': { len: 4, fn: 'isa-h?' },
+  parents: { len: 3, fn: 'parents-h' },
+  ancestors: { len: 3, fn: 'ancestors-h' },
+  descendants: { len: 3, fn: 'descendants-h' },
 };
 
 let parsed: Map<string, Form> | null = null;
