@@ -2589,6 +2589,27 @@ function keepMeta(from: Value, to: Value): Value {
   if (to instanceof Vec || to instanceof MapV || to instanceof SetV || to instanceof SortedMapV) return kwithMeta(to, m);
   return to;
 }
+/** `type` has no JS constructors in wasm: it returns a symbol naming the runtime type (compare with `=`). */
+export function ktype(v: Value): Value {
+  if (v instanceof Nil) return NIL;
+  let n = "Object";
+  if (v instanceof Num) n = "Number";
+  else if (v instanceof Str) n = "String";
+  else if (v instanceof Bool) n = "Boolean";
+  else if (v instanceof Kw) n = "Keyword";
+  else if (v instanceof Sym) n = "Symbol";
+  else if (v instanceof Vec) n = changetype<Vec>(v).list ? "PersistentList" : "PersistentVector";
+  else if (v instanceof SortedMapV) n = "PersistentTreeMap";
+  else if (v instanceof MapV) n = "PersistentHashMap";
+  else if (v instanceof SetV) n = "PersistentHashSet";
+  else if (v instanceof Fn) n = "Function";
+  else if (v instanceof Atom) n = "Atom";
+  else if (v instanceof Arr) n = "Array";
+  else if (v instanceof Re) n = "RegExp";
+  else if (v instanceof Rec) n = changetype<Rec>(v).typeName();
+  return new Sym("", n);
+}
+
 export function kmeta(v: Value): Value {
   if (v instanceof SortedMapV) return changetype<SortedMapV>(v).meta;
   if (v instanceof Vec) return changetype<Vec>(v).meta;

@@ -145,6 +145,7 @@ const CORE_OPS: Record<string, CoreOp> = {
   'identical?': { kind: 'bool', fn: 'kidentical', arity: 2 },
   'realized?': { kind: 'bool', fn: 'krealized', arity: 1 },
   'hash': { kind: 'value', fn: 'khash', arity: 1 },
+  'type': { kind: 'value', fn: 'ktype', arity: 1 },
   'meta': { kind: 'value', fn: 'kmeta', arity: 1 },
   'with-meta': { kind: 'value', fn: 'kwithMeta', arity: 2 },
   'reset-meta!': { kind: 'value', fn: 'kresetMeta', arity: 2 },
@@ -227,6 +228,12 @@ const TRANSDUCER_ARITY: Record<string, { argc: number; fn: string }> = {
   filter: { argc: 1, fn: 'filter-xf' },
   take: { argc: 1, fn: 'take-xf' },
   into: { argc: 3, fn: 'into-xf' },
+  derive: { argc: 3, fn: 'derive-h' },
+  underive: { argc: 3, fn: 'underive-h' },
+  'isa?': { argc: 3, fn: 'isa-h?' },
+  parents: { argc: 2, fn: 'parents-h' },
+  ancestors: { argc: 2, fn: 'ancestors-h' },
+  descendants: { argc: 2, fn: 'descendants-h' },
 };
 const CMP_OPS: Record<string, number> = { '<': 0, '>': 1, '<=': 2, '>=': 3 };
 const ARRAY_OPS: Record<string, string> = { vector: 'vector', 'hash-map': 'hashMap', 'pr-str': 'prStr', prn: 'prn', println: 'println', print: 'print', pr: 'pr', str: 'str', list: 'klist', 'hash-set': 'hashSet', concat: 'kconcat', 'sorted-map': 'sortedMap', 'sorted-set': 'sortedSet', array: 'karray' };
@@ -258,7 +265,7 @@ const RUNTIME_IMPORTS = [
   'println', 'print', 'pr', 'kcaptureOut', 'prn', 'prStr', 'str',
   'SetV', 'ExInfo', 'EMPTY_SET', 'mkSet', 'hashSet', 'kset', 'kdisj', 'isSet', 'isList', 'isSeq', 'items', 'klist', 'kseq', 'krest', 'knext',
   'kcons', 'kemptyOf', 'kreverse', 'kconcat', 'ktake', 'kdrop', 'kmapN', 'kmap2', 'kmap3', 'kmapv', 'kfilter', 'kfilterv', 'kremove', 'ksome',
-  'Rec', 'Reified', 'noImpl', 'kevery', 'kinto', 'krange1', 'krange2', 'krange3', 'kapply', 'lazySeq', 'kdoall', 'kdorun', 'kiterate', 'krepeat1', 'krepeat2', 'kcycle', 'ktakeWhile', 'kdropWhile', 'kmapcat', 'krange0', 'ksort1', 'ksort2', 'ksortBy2', 'ksortBy3', 'kcompare', 'kexInfo', 'kexMessage', 'Sym', 'ksymbol1', 'ksymbol2', 'isSymbol', 'kcmpN', 'ksqrt', 'kpow', 'kfloor', 'kceil', 'katom', 'kderef', 'kreset', 'kint', 'kint', 'kquot', 'kbitShl', 'kbitShr', 'kbitAnd', 'kbitOr', 'kbitXor', 'kabs', 'kboolean', 'isInteger', 'isFloat', 'isFn', 'SortedMapV', 'sortedMap', 'sortedSet', 'kderive', 'kunderive', 'kparents', 'kancestors', 'kdescendants', 'kisa', 'kpreferMethod', 'kdefmulti', 'kmultiAddMethod', 'karray', 'kintoArray', 'kaget', 'kaset', 'kalength', 'kaclone', 'Arr', 'sortedMapBy', 'sortedSetBy', 'ksortedMapEmptyBy', 'ksortedSetEmptyBy', 'isSortedMap', 'isSortedSet', 'isSorted', 'ksubseq3', 'ksubseq5', 'krsubseq3', 'krsubseq5', 'kmeta', 'kwithMeta', 'kresetMeta', 'kidentical', 'khash', 'krealized', 'isSequential', 'isTrue', 'isFalse', 'kname', 'knamespace', 'cljstrUpperCase', 'cljstrLowerCase', 'cljstrTrim', 'cljstrBlank', 'cljstrStartsWith', 'cljstrEndsWith', 'cljstrIncludes', 'cljstrReverse', 'cljstrReplace', 'cljstrSplit2', 'cljstrSplit3', 'cljstrReplaceFirst', 'Re', 'kreCompile', 'kreFind', 'kreMatches', 'kreSeq', 'krePattern', 'isRegex', 'cljstrCapitalize', 'cljstrIndexOf2', 'cljstrIndexOf3', 'cljstrLastIndexOf2', 'cljstrLastIndexOf3', 'cljstrTriml', 'cljstrTrimr', 'cljstrTrimNewline', 'cljstrSplitLines', 'cljstrEscape', 'isChar', 'kchar', 'Atom', 'kswap', 'ksubs2', 'ksubs3', 'cljstrJoin1', 'cljstrJoin2',  'kexData', 'restOf',
+  'Rec', 'Reified', 'noImpl', 'kevery', 'kinto', 'krange1', 'krange2', 'krange3', 'kapply', 'lazySeq', 'kdoall', 'kdorun', 'kiterate', 'krepeat1', 'krepeat2', 'kcycle', 'ktakeWhile', 'kdropWhile', 'kmapcat', 'krange0', 'ksort1', 'ksort2', 'ksortBy2', 'ksortBy3', 'kcompare', 'kexInfo', 'kexMessage', 'Sym', 'ksymbol1', 'ksymbol2', 'isSymbol', 'kcmpN', 'ksqrt', 'kpow', 'kfloor', 'kceil', 'katom', 'kderef', 'kreset', 'kint', 'kint', 'kquot', 'kbitShl', 'kbitShr', 'kbitAnd', 'kbitOr', 'kbitXor', 'kabs', 'kboolean', 'isInteger', 'isFloat', 'isFn', 'SortedMapV', 'sortedMap', 'sortedSet', 'kderive', 'kunderive', 'kparents', 'kancestors', 'kdescendants', 'kisa', 'kpreferMethod', 'kdefmulti', 'kmultiAddMethod', 'karray', 'kintoArray', 'kaget', 'kaset', 'kalength', 'kaclone', 'Arr', 'sortedMapBy', 'sortedSetBy', 'ksortedMapEmptyBy', 'ksortedSetEmptyBy', 'isSortedMap', 'isSortedSet', 'isSorted', 'ksubseq3', 'ksubseq5', 'krsubseq3', 'krsubseq5', 'ktype', 'kmeta', 'kwithMeta', 'kresetMeta', 'kidentical', 'khash', 'krealized', 'isSequential', 'isTrue', 'isFalse', 'kname', 'knamespace', 'cljstrUpperCase', 'cljstrLowerCase', 'cljstrTrim', 'cljstrBlank', 'cljstrStartsWith', 'cljstrEndsWith', 'cljstrIncludes', 'cljstrReverse', 'cljstrReplace', 'cljstrSplit2', 'cljstrSplit3', 'cljstrReplaceFirst', 'Re', 'kreCompile', 'kreFind', 'kreMatches', 'kreSeq', 'krePattern', 'isRegex', 'cljstrCapitalize', 'cljstrIndexOf2', 'cljstrIndexOf3', 'cljstrLastIndexOf2', 'cljstrLastIndexOf3', 'cljstrTriml', 'cljstrTrimr', 'cljstrTrimNewline', 'cljstrSplitLines', 'cljstrEscape', 'isChar', 'kchar', 'Atom', 'kswap', 'ksubs2', 'ksubs3', 'cljstrJoin1', 'cljstrJoin2',  'kexData', 'restOf',
 ];
 
 function unsupported(construct: string, reason: string): never {
