@@ -56,7 +56,8 @@
   "license": "MIT",
   "devDependencies": {
     "@types/node": "^25.3.3",
-    "assemblyscript": "^0.28.20"
+    "assemblyscript": "^0.28.20",
+    "miniflare": "^4.20260730.0"
   },
   "peerDependencies": {
     "assemblyscript": "^0.28.20"
