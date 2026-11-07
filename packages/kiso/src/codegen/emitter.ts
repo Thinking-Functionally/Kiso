@@ -61,6 +61,7 @@ function emitNode(node: Node, ctx: EmitCtx): string {
     case 'var-ref': {
       // js/Foo → Foo (JS global reference)
       if (node.name.startsWith('js/')) return node.name.slice(3);
+      if (!node.local && HOST_JS.has(node.name)) return HOST_JS.get(node.name)!;
       // Resolve ns-qualified names using aliases: su.core/foo → su.foo
       const slashIdx = node.name.indexOf('/');
       if (slashIdx > 0) {
@@ -870,6 +871,12 @@ const RUNTIME_FUNCTIONS = new Set([
   'ifn', 'LazySeq', 'read-string', 'char', 'char?', 'min-key', 'max-key', 'split-at', 'split-with', 'sequence', 'rseq', 'shuffle', 'key', 'val', 'namespace',
 ]);
 
+/** host/ functions that are also available on the JS backend. */
+const HOST_JS = new Map([
+  ['host/json-parse', 'host_json_parse'],
+  ['host/json-stringify', 'host_json_stringify'],
+]);
+
 /** Scan AST for runtime function usage and return needed import names. */
 function collectRuntimeImports(nodes: Node[]): string[] {
   const used = new Set<string>();
@@ -910,6 +917,7 @@ function scanNodeForRuntime(node: Node, used: Set<string>): void {
       break;
     }
     case 'var-ref': {
+      if (!node.local && HOST_JS.has(node.name)) used.add(HOST_JS.get(node.name)!);
       if (!node.local && RUNTIME_FUNCTIONS.has(node.name)) {
         used.add(munge(node.name));
       }

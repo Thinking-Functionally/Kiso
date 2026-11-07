@@ -8,6 +8,7 @@ import { isHashMap, PersistentHashMap, hashMap } from './hash-map.js';
 import { isHashSet, PersistentHashSet } from './hash-set.js';
 import { isList, first, rest, count } from './list.js';
 import { keyword } from './keyword.js';
+import { toArray } from './seq.js';
 
 /** Convert Kiso persistent data to plain JS. */
 export function clj_to_js(x: unknown): unknown {
@@ -142,3 +143,41 @@ export { into_array as to_array };
 
 // Backward-compatible camelCase aliases
 export { clj_to_js as cljToJs, js_to_clj as jsToClj };
+
+function jsonToClj(x: unknown): unknown {
+  if (x === null || x === undefined) return null;
+  if (Array.isArray(x)) return vector(...x.map(jsonToClj));
+  if (typeof x === 'object') {
+    const args: unknown[] = [];
+    for (const [k, v] of Object.entries(x as object)) args.push(keyword(k), jsonToClj(v));
+    return hashMap(...args);
+  }
+  return x;
+}
+
+/** host/json-parse: same contract as the AS backend (keyword keys, throws on invalid input). */
+export function host_json_parse(s: string): unknown {
+  return jsonToClj(JSON.parse(s));
+}
+
+function cljToJson(x: unknown): unknown {
+  if (x === null || x === undefined) return null;
+  if (typeof x === 'number') return Number.isFinite(x) ? x : null;
+  if (isKeyword(x)) {
+    const kw = x as Keyword;
+    return kw.ns ? `${kw.ns}/${kw.name}` : kw.name;
+  }
+  if (isHashMap(x)) {
+    const obj: Record<string, unknown> = {};
+    (x as PersistentHashMap).forEach((k, v) => {
+      obj[isKeyword(k) ? cljToJson(k) as string : String(k)] = cljToJson(v);
+    });
+    return obj;
+  }
+  if (isVector(x) || isList(x) || isHashSet(x)) return (toArray(x as any) as unknown[]).map(cljToJson);
+  return x;
+}
+
+export function host_json_stringify(x: unknown): string {
+  return JSON.stringify(cljToJson(x));
+}
