@@ -3,7 +3,7 @@
 import { readStr } from '../reader/reader.js';
 import type { Form } from '../reader/form.js';
 import { vector } from './vector.js';
-import { list } from './list.js';
+import { listOf } from './list.js';
 import { hashMap } from './hash-map.js';
 import { hashSet } from './hash-set.js';
 import { keyword } from './keyword.js';
@@ -18,7 +18,7 @@ function toData(f: Form): unknown {
     case 'char': return d.value;
     case 'keyword': return d.ns ? keyword(d.name, d.ns) : keyword(d.name);
     case 'symbol': return d.ns ? symbol(d.ns, d.name) : symbol(d.name);
-    case 'list': return list(...d.items.map(toData));
+    case 'list': return listOf(d.items.map(toData));
     case 'vector': return vector(...d.items.map(toData));
     case 'set': return hashSet(...d.items.map(toData));
     case 'map': return hashMap(...d.items.map(toData));

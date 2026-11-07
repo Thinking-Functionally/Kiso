@@ -57,6 +57,13 @@ export function list(...args: unknown[]): List {
   return result;
 }
 
+/** Build a list from an array without spreading (spread overflows the call stack on large arrays). */
+export function listOf(items: ArrayLike<unknown>): List {
+  let result: List = EMPTY_LIST;
+  for (let i = items.length - 1; i >= 0; i--) result = new Cons(items[i], result);
+  return result;
+}
+
 export function isList(x: unknown): x is List {
   return x instanceof Cons || x instanceof EmptyList;
 }

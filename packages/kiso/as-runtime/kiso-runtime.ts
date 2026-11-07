@@ -1251,39 +1251,27 @@ export function toStr(v: Value, readable: bool): string {
   }
   if (v instanceof Vec) {
     const x = changetype<Vec>(v);
-    let out = x.list ? "(" : "[";
-    for (let i = 0; i < x.n; i++) {
-      if (i > 0) out += " ";
-      out += elemStr(unchecked(x.a[i]), readable);
-    }
-    return out + (x.list ? ")" : "]");
+    const parts = new Array<string>();
+    for (let i = 0; i < x.n; i++) parts.push(elemStr(unchecked(x.a[i]), readable));
+    return (x.list ? "(" : "[") + parts.join(" ") + (x.list ? ")" : "]");
   }
   if (v instanceof LazySeq) {
     const a = lazyItems(v);
-    let out = "(";
-    for (let i = 0; i < a.length; i++) {
-      if (i > 0) out += " ";
-      out += elemStr(a[i], readable);
-    }
-    return out + ")";
+    const parts = new Array<string>();
+    for (let i = 0; i < a.length; i++) parts.push(elemStr(a[i], readable));
+    return "(" + parts.join(" ") + ")";
   }
   if (v instanceof MapV) {
     const m = changetype<MapV>(v);
-    let out = "{";
-    for (let i = 0; i < m.n; i++) {
-      if (i > 0) out += ", ";
-      out += elemStr(unchecked(m.keys[i]), readable) + " " + elemStr(unchecked(m.vals[i]), readable);
-    }
-    return out + "}";
+    const parts = new Array<string>();
+    for (let i = 0; i < m.n; i++) parts.push(elemStr(unchecked(m.keys[i]), readable) + " " + elemStr(unchecked(m.vals[i]), readable));
+    return "{" + parts.join(", ") + "}";
   }
   if (v instanceof SetV) {
     const m = changetype<SetV>(v).m;
-    let out = "#{";
-    for (let i = 0; i < m.n; i++) {
-      if (i > 0) out += " ";
-      out += elemStr(unchecked(m.keys[i]), readable);
-    }
-    return out + "}";
+    const parts = new Array<string>();
+    for (let i = 0; i < m.n; i++) parts.push(elemStr(unchecked(m.keys[i]), readable));
+    return "#{" + parts.join(" ") + "}";
   }
   if (v instanceof ExInfo) return "#error " + changetype<ExInfo>(v).msg;
   if (v instanceof Fn) return "#<fn>";
@@ -1303,12 +1291,9 @@ function out(s: string): void {
   else hostWrite(s);
 }
 function joinPrint(args: Array<Value>, readable: bool): string {
-  let s = "";
-  for (let i = 0; i < args.length; i++) {
-    if (i > 0) s += " ";
-    s += readable ? toStr(args[i], true) : args[i] === NIL ? "nil" : toStr(args[i], false);
-  }
-  return s;
+  const parts = new Array<string>();
+  for (let i = 0; i < args.length; i++) parts.push(readable ? toStr(args[i], true) : args[i] === NIL ? "nil" : toStr(args[i], false));
+  return parts.join(" ");
 }
 export function println(args: Array<Value>): Value {
   out(joinPrint(args, false) + "\n");
@@ -1333,18 +1318,15 @@ export function kcaptureOut(f: Value): Value {
 }
 
 export function prStr(args: Array<Value>): Value {
-  let out = "";
-  for (let i = 0; i < args.length; i++) {
-    if (i > 0) out += " ";
-    out += toStr(args[i], true);
-  }
-  return new Str(out);
+  const parts = new Array<string>();
+  for (let i = 0; i < args.length; i++) parts.push(toStr(args[i], true));
+  return new Str(parts.join(" "));
 }
 
 export function str(args: Array<Value>): Value {
-  let out = "";
-  for (let i = 0; i < args.length; i++) out += toStr(args[i], false);
-  return new Str(out);
+  const parts = new Array<string>();
+  for (let i = 0; i < args.length; i++) parts.push(toStr(args[i], false));
+  return new Str(parts.join(""));
 }
 
 // -- Lazy sequences ------------------------------------------------------------
@@ -2392,9 +2374,9 @@ export function cljstrIncludes(s: Value, p: Value): bool {
 }
 export function cljstrReverse(s: Value): Value {
   const t = strOf(s);
-  let out = "";
-  for (let i = t.length - 1; i >= 0; i--) out += t.charAt(i);
-  return new Str(out);
+  const parts = new Array<string>();
+  for (let i = t.length - 1; i >= 0; i--) parts.push(t.charAt(i));
+  return new Str(parts.join(""));
 }
 
 export function cljstrJoin1(c: Value): Value {
@@ -2403,12 +2385,9 @@ export function cljstrJoin1(c: Value): Value {
 export function cljstrJoin2(sep: Value, c: Value): Value {
   const a = items(c);
   const sp = strOf(sep);
-  let out = "";
-  for (let i = 0; i < a.length; i++) {
-    if (i > 0) out += sp;
-    out += toStr(a[i], false);
-  }
-  return new Str(out);
+  const parts = new Array<string>();
+  for (let i = 0; i < a.length; i++) parts.push(toStr(a[i], false));
+  return new Str(parts.join(sp));
 }
 export function cljstrCapitalize(s: Value): Value {
   const t = strOf(s);
@@ -2458,13 +2437,13 @@ export function cljstrSplitLines(s: Value): Value {
 }
 export function cljstrEscape(s: Value, m: Value): Value {
   const t = strOf(s);
-  let out = "";
+  const parts = new Array<string>();
   for (let i = 0; i < t.length; i++) {
     const c = new Str(t.charAt(i));
     const r = kget3(m, c, NIL);
-    out += r === NIL ? c.v : toStr(r, false);
+    parts.push(r === NIL ? c.v : toStr(r, false));
   }
-  return new Str(out);
+  return new Str(parts.join(""));
 }
 export function isChar(v: Value): bool {
   return v instanceof Str && changetype<Str>(v).v.length == 1;
@@ -2759,20 +2738,21 @@ function expandRepl(r: Regex, s: string, tpl: string): string {
   return out;
 }
 function replaceRe(s: string, r: Regex, repl: Value, all: bool): string {
-  let out = "";
+  const parts = new Array<string>();
   let last: i32 = 0;
   let pos: i32 = 0;
   while (pos <= s.length && r.search(s, pos)) {
     const ms = r.groupStart(0);
     const me = r.groupEnd(0);
-    out += s.substring(last, ms);
-    if (repl instanceof Str) out += expandRepl(r, s, changetype<Str>(repl).v);
-    else out += toStr(callV1(repl, matchResult(r, s)), false);
+    parts.push(s.substring(last, ms));
+    if (repl instanceof Str) parts.push(expandRepl(r, s, changetype<Str>(repl).v));
+    else parts.push(toStr(callV1(repl, matchResult(r, s)), false));
     last = me;
     pos = me > ms ? me : me + 1;
     if (!all) break;
   }
-  return out + s.substring(last);
+  parts.push(s.substring(last));
+  return parts.join("");
 }
 export function cljstrReplace(s: Value, a: Value, b: Value): Value {
   if (a instanceof Re) return new Str(replaceRe(strOf(s), reOf(a), b, true));

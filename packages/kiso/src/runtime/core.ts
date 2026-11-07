@@ -3,7 +3,7 @@
 // These functions are used by compiled output and by the runtime itself.
 // They implement Clojure semantics (truthiness, nil handling, etc.).
 
-import { isList, cons as listCons, count as listCount, EMPTY_LIST, list } from './list.js';
+import { isList, cons as listCons, count as listCount, EMPTY_LIST, list, listOf } from './list.js';
 import { isVector, PersistentVector, vector } from './vector.js';
 import { setStructuralHooks } from './hash-map.js';
 import { isHashMap, PersistentHashMap, hashMap as hm } from './hash-map.js';
@@ -466,12 +466,12 @@ export function keys(m: unknown): unknown {
   if (isHashMap(m)) {
     const ks: unknown[] = [];
     (m as PersistentHashMap).forEach((k) => ks.push(k));
-    return list(...ks);
+    return listOf(ks);
   }
   if (isSortedMap(m)) {
     const ks: unknown[] = [];
     (m as PersistentTreeMap).forEach((k) => ks.push(k));
-    return list(...ks);
+    return listOf(ks);
   }
   return null;
 }
@@ -481,12 +481,12 @@ export function vals(m: unknown): unknown {
   if (isHashMap(m)) {
     const vs: unknown[] = [];
     (m as PersistentHashMap).forEach((_, v) => vs.push(v));
-    return list(...vs);
+    return listOf(vs);
   }
   if (isSortedMap(m)) {
     const vs: unknown[] = [];
     (m as PersistentTreeMap).forEach((_, v) => vs.push(v));
-    return list(...vs);
+    return listOf(vs);
   }
   return null;
 }
@@ -636,7 +636,7 @@ export function sort(...args: unknown[]): unknown {
   let s = seq(coll);
   while (s !== null) { arr.push(seqFirst(s)); s = seqNext(s); }
   arr.sort(cmp);
-  return list(...arr);
+  return listOf(arr);
 }
 
 export function sort_by(keyfn_: unknown, ...args: unknown[]): unknown {
@@ -647,7 +647,7 @@ export function sort_by(keyfn_: unknown, ...args: unknown[]): unknown {
   let s = seq(coll);
   while (s !== null) { arr.push(seqFirst(s)); s = seqNext(s); }
   arr.sort((a, b) => cmp(keyfn(a), keyfn(b)));
-  return list(...arr);
+  return listOf(arr);
 }
 
 export function reverse(coll: unknown): unknown {
@@ -655,7 +655,7 @@ export function reverse(coll: unknown): unknown {
   let s = seq(coll);
   while (s !== null) { arr.push(seqFirst(s)); s = seqNext(s); }
   arr.reverse();
-  return list(...arr);
+  return listOf(arr);
 }
 
 export function range(...args: number[]): unknown {
@@ -672,7 +672,7 @@ export function range(...args: number[]): unknown {
   const result: number[] = [];
   if (step > 0) { for (let i = start; i < end; i += step) result.push(i); }
   else if (step < 0) { for (let i = start; i > end; i += step) result.push(i); }
-  return list(...result);
+  return listOf(result);
 }
 
 export function repeat(n: unknown, x?: unknown): unknown {
@@ -682,7 +682,7 @@ export function repeat(n: unknown, x?: unknown): unknown {
   }
   const result: unknown[] = [];
   for (let i = 0; i < (n as number); i++) result.push(x);
-  return list(...result);
+  return listOf(result);
 }
 
 export function repeatedly(n: unknown, f?: () => unknown): unknown {
@@ -693,7 +693,7 @@ export function repeatedly(n: unknown, f?: () => unknown): unknown {
   }
   const result: unknown[] = [];
   for (let i = 0; i < (n as number); i++) result.push(f());
-  return list(...result);
+  return listOf(result);
 }
 
 export function group_by(f_: unknown, coll: unknown): unknown {
@@ -875,7 +875,7 @@ export function butlast(coll: unknown): unknown {
   if (s === null) return null;
   let next = seqNext(s);
   while (next !== null) { arr.push(seqFirst(s)!); s = next; next = seqNext(s); }
-  return arr.length === 0 ? null : list(...arr);
+  return arr.length === 0 ? null : listOf(arr);
 }
 
 export function peek(coll: unknown): unknown {
@@ -979,7 +979,7 @@ export function flatten(coll: unknown): unknown {
   }
   let s = seq(coll);
   while (s !== null) { walk(seqFirst(s)); s = seqNext(s); }
-  return list(...result);
+  return listOf(result);
 }
 
 export function distinct(coll: unknown): unknown {
@@ -1002,7 +1002,7 @@ export function dedupe(coll: unknown): unknown {
     if (!equiv(v, prev)) { result.push(v); prev = v; }
     s = seqNext(s);
   }
-  return list(...result);
+  return listOf(result);
 }
 
 export function interleave(...colls: unknown[]): unknown {
@@ -1028,7 +1028,7 @@ export function interpose(sep: unknown, coll: unknown): unknown {
     isFirst = false;
     s = seqNext(s);
   }
-  return list(...result);
+  return listOf(result);
 }
 
 export function partition(n: number, coll: unknown): unknown {
@@ -1037,9 +1037,9 @@ export function partition(n: number, coll: unknown): unknown {
   let s = seq(coll);
   while (s !== null) { arr.push(seqFirst(s)); s = seqNext(s); }
   for (let i = 0; i + n <= arr.length; i += n) {
-    result.push(list(...arr.slice(i, i + n)));
+    result.push(listOf(arr.slice(i, i + n)));
   }
-  return list(...result);
+  return listOf(result);
 }
 
 export function partition_all(n: number, coll: unknown): unknown {
@@ -1048,9 +1048,9 @@ export function partition_all(n: number, coll: unknown): unknown {
   let s = seq(coll);
   while (s !== null) { arr.push(seqFirst(s)); s = seqNext(s); }
   for (let i = 0; i < arr.length; i += n) {
-    result.push(list(...arr.slice(i, i + n)));
+    result.push(listOf(arr.slice(i, i + n)));
   }
-  return list(...result);
+  return listOf(result);
 }
 
 export function partition_by(f_: unknown, coll: unknown): unknown {
@@ -1066,15 +1066,15 @@ export function partition_by(f_: unknown, coll: unknown): unknown {
     if (isFirst || equiv(key, currentKey)) {
       current.push(v);
     } else {
-      result.push(list(...current));
+      result.push(listOf(current));
       current = [v];
     }
     currentKey = key;
     isFirst = false;
     s = seqNext(s);
   }
-  if (current.length > 0) result.push(list(...current));
-  return list(...result);
+  if (current.length > 0) result.push(listOf(current));
+  return listOf(result);
 }
 
 export function merge_with(f: (...args: unknown[]) => unknown, ...maps: unknown[]): unknown {
@@ -1134,7 +1134,7 @@ export function re_seq(re: RegExp, s: string): unknown {
     matches.push(reResult(m));
     if (m[0] === '') r.lastIndex++;
   }
-  return matches.length === 0 ? null : list(...matches);
+  return matches.length === 0 ? null : listOf(matches);
 }
 
 // -- Misc --
@@ -1180,7 +1180,7 @@ export function take_last(n: number, coll: unknown): unknown {
   const arr: unknown[] = [];
   let s = seq(coll);
   while (s !== null) { arr.push(seqFirst(s)); s = seqNext(s); }
-  return list(...arr.slice(Math.max(0, arr.length - n)));
+  return listOf(arr.slice(Math.max(0, arr.length - n)));
 }
 
 export function take_nth(n: number, coll: unknown): unknown {
@@ -1198,7 +1198,7 @@ export function drop_last(n: number, coll: unknown): unknown {
   const arr: unknown[] = [];
   let s = seq(coll);
   while (s !== null) { arr.push(seqFirst(s)); s = seqNext(s); }
-  return list(...arr.slice(0, Math.max(0, arr.length - n)));
+  return listOf(arr.slice(0, Math.max(0, arr.length - n)));
 }
 
 export function keep_indexed(f_: unknown, coll: unknown): unknown {
@@ -1211,7 +1211,7 @@ export function keep_indexed(f_: unknown, coll: unknown): unknown {
     if (v !== null && v !== undefined) result.push(v);
     s = seqNext(s);
   }
-  return list(...result);
+  return listOf(result);
 }
 
 export function reductions(f: (...args: unknown[]) => unknown, ...rest: unknown[]): unknown {
@@ -1231,7 +1231,7 @@ export function reductions(f: (...args: unknown[]) => unknown, ...rest: unknown[
     result.push(acc);
     s = seqNext(s);
   }
-  return list(...result);
+  return listOf(result);
 }
 
 // -- Lazy generators (finite take required) --
@@ -1267,7 +1267,7 @@ export function doall(coll: unknown): unknown {
   let s = seq(coll);
   const result: unknown[] = [];
   while (s !== null) { result.push(seqFirst(s)); s = seqNext(s); }
-  return list(...result);
+  return listOf(result);
 }
 
 export function dorun(coll: unknown): null {
@@ -1351,13 +1351,13 @@ function sortedEntries(sc: unknown, tests: [Function, unknown][]): unknown[] {
 /** (subseq sc test key) or (subseq sc start-test start-key end-test end-key), ascending. */
 export function subseq(sc: unknown, test: Function, key: unknown, test2?: Function, key2?: unknown): unknown {
   const entries = sortedEntries(sc, test2 ? [[test, key], [test2, key2]] : [[test, key]]);
-  return entries.length === 0 ? null : list(...entries);
+  return entries.length === 0 ? null : listOf(entries);
 }
 
 /** Same as subseq, in descending order. */
 export function rsubseq(sc: unknown, test: Function, key: unknown, test2?: Function, key2?: unknown): unknown {
   const entries = sortedEntries(sc, test2 ? [[test, key], [test2, key2]] : [[test, key]]).reverse();
-  return entries.length === 0 ? null : list(...entries);
+  return entries.length === 0 ? null : listOf(entries);
 }
 
 // -- More predicates --
@@ -1592,7 +1592,7 @@ export function with_meta(obj: unknown, m: unknown): unknown {
     const items: unknown[] = [];
     let s = seq(obj);
     while (s !== null) { items.push(seqFirst(s)); s = seqNext(s); }
-    copy = list(...items);
+    copy = listOf(items);
   } else {
     // For other objects/functions, attach directly
     copy = obj;
