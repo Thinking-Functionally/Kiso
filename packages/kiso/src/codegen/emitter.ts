@@ -866,7 +866,7 @@ const RUNTIME_FUNCTIONS = new Set([
   // Transducer support
   'transduce', 'completing', 'reduced', 'reduced?', 'unreduced', 'ensure-reduced',
   // extras.ts
-  'vec', 'mapv', 'vector?', 'list?', 'true?', 'false?', 'boolean', 'hash-map', 'hash-set', 'keyword?', 'symbol?', 'map?', 'set?', 'int', 'long', 'short',
+  'vector', 'keyword', 'vec', 'mapv', 'vector?', 'list?', 'true?', 'false?', 'boolean', 'hash-map', 'hash-set', 'keyword?', 'symbol?', 'map?', 'set?', 'int', 'long', 'short',
   'bit-and', 'bit-or', 'bit-xor', 'bit-not', 'bit-shift-left', 'bit-shift-right', 'distinct?', 'disj',
   'ifn', 'LazySeq', 'read-string', 'char', 'char?', 'min-key', 'max-key', 'split-at', 'split-with', 'sequence', 'rseq', 'shuffle', 'key', 'val', 'namespace',
 ]);

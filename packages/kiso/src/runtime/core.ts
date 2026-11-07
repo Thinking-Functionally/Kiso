@@ -238,8 +238,11 @@ export function subs(s: unknown, start: unknown, end?: unknown): string {
   return end !== undefined ? str.substring(startIdx, end as number) : str.substring(startIdx);
 }
 
-export function assoc(coll: unknown, key: unknown, val: unknown): unknown {
-  return keepMeta(coll, assocImpl(coll, key, val));
+export function assoc(coll: unknown, key: unknown, val: unknown, ...kvs: unknown[]): unknown {
+  if (kvs.length % 2 !== 0) throw new Error('assoc expects an even number of arguments after the collection');
+  let out = assocImpl(coll, key, val);
+  for (let i = 0; i < kvs.length; i += 2) out = assocImpl(out, kvs[i], kvs[i + 1]);
+  return keepMeta(coll, out);
 }
 
 function assocImpl(coll: unknown, key: unknown, val: unknown): unknown {
