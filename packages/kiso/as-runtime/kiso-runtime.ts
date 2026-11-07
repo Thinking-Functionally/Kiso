@@ -1209,15 +1209,21 @@ export function fmtNum(n: f64): string {
 }
 
 function quote(s: string): string {
-  let out = '"';
+  const parts = new Array<string>();
+  parts.push('"');
   for (let i = 0; i < s.length; i++) {
     const c = s.charCodeAt(i);
-    if (c == 34) out += '\\"';
-    else if (c == 92) out += "\\\\";
-    else if (c == 10) out += "\\n";
-    else out += s.charAt(i);
+    if (c == 34) parts.push('\\"');
+    else if (c == 92) parts.push("\\\\");
+    else if (c == 10) parts.push("\\n");
+    else if (c == 13) parts.push("\\r");
+    else if (c == 9) parts.push("\\t");
+    else if (c == 8) parts.push("\\b");
+    else if (c == 12) parts.push("\\f");
+    else parts.push(s.charAt(i));
   }
-  return out + '"';
+  parts.push('"');
+  return parts.join("");
 }
 
 export function toStr(v: Value, readable: bool): string {

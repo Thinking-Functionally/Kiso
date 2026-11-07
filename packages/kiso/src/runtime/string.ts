@@ -105,6 +105,7 @@ export function split(s: string, re: RegExp | string, limit?: number): Persisten
   const parts: string[] = [];
   let last = 0;
   let q = 0;
+  let matched = false;
   while (q < s.length && (lim === 0 || parts.length < lim - 1)) {
     r.lastIndex = q;
     const m = r.exec(s);
@@ -115,11 +116,13 @@ export function split(s: string, re: RegExp | string, limit?: number): Persisten
       continue;
     }
     parts.push(s.slice(last, m.index));
+    matched = true;
     last = end;
     q = end > m.index ? end : end + 1;
   }
   parts.push(s.slice(last));
-  if (lim === 0) while (parts.length > 1 && parts[parts.length - 1] === '') parts.pop();
+  // Like Java/CLJS: when something matched, trailing empty strings are all dropped (possibly leaving []).
+  if (lim === 0 && matched) while (parts.length > 0 && parts[parts.length - 1] === '') parts.pop();
   return vector(...parts);
 }
 
