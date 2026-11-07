@@ -279,7 +279,49 @@ function createTwoNode(
 
 // -- PersistentHashMap (wrapper with nil key support) --
 
-const EMPTY_ROOT = new BitmapNode(0, 0, [], []);
+// Like ClojureScript's PersistentArrayMap: up to 8 entries are kept in insertion order (so small maps
+// print and seq in the order they were written); the 9th distinct key converts the node to a HAMT.
+const ARRAY_MAP_MAX = 8;
+
+class ArrayNode implements HAMTNode {
+  constructor(readonly kvs: KV[]) {}
+
+  private indexOf(key: unknown): number {
+    for (let i = 0; i < this.kvs.length; i++) if (keysEqual(this.kvs[i]!.key, key)) return i;
+    return -1;
+  }
+
+  get(_hash: number, _shift: number, key: unknown): unknown {
+    const i = this.indexOf(key);
+    return i < 0 ? undefined : this.kvs[i]!.val;
+  }
+
+  assoc(_hash: number, _shift: number, key: unknown, val: unknown): { node: HAMTNode; added: boolean } {
+    const i = this.indexOf(key);
+    if (i >= 0) {
+      if (this.kvs[i]!.val === val) return { node: this, added: false };
+      const kvs = this.kvs.slice();
+      kvs[i] = { key: this.kvs[i]!.key, val };
+      return { node: new ArrayNode(kvs), added: false };
+    }
+    if (this.kvs.length < ARRAY_MAP_MAX) return { node: new ArrayNode([...this.kvs, { key, val }]), added: true };
+    let node: HAMTNode = new BitmapNode(0, 0, [], []);
+    for (const kv of this.kvs) node = node.assoc(hashKey(kv.key), 0, kv.key, kv.val).node;
+    return { node: node.assoc(hashKey(key), 0, key, val).node, added: true };
+  }
+
+  dissoc(_hash: number, _shift: number, key: unknown): HAMTNode | null {
+    const i = this.indexOf(key);
+    if (i < 0) return this;
+    return this.kvs.length === 1 ? null : new ArrayNode(arrayRemove(this.kvs, i));
+  }
+
+  forEach(fn: (key: unknown, val: unknown) => void): void {
+    for (const kv of this.kvs) fn(kv.key, kv.val);
+  }
+}
+
+const EMPTY_ROOT = new ArrayNode([]);
 
 export class PersistentHashMap {
   readonly _tag = MAP_TAG;
