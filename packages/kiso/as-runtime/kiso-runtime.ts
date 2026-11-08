@@ -2202,6 +2202,8 @@ export function kdisjBang(t: Value, k: Value): Value {
 }
 export class Atom extends Value {
   meta: Value = NIL;
+  watchKeys: Array<Value> = new Array<Value>();
+  watchFns: Array<Value> = new Array<Value>();
   constructor(public v: Value) {
     super();
   }
@@ -2215,9 +2217,58 @@ export function kderef(a: Value): Value {
   abort("deref: not an atom");
   return NIL;
 }
+function notifyWatches(at: Atom, oldV: Value, newV: Value): void {
+  const n = at.watchKeys.length;
+  if (n == 0) return;
+  // snapshot so watches may add/remove watches while running
+  const ks = at.watchKeys.slice(0);
+  const fs = at.watchFns.slice(0);
+  for (let i = 0; i < n; i++) {
+    const args = new Array<Value>();
+    args.push(ks[i]);
+    args.push(at);
+    args.push(oldV);
+    args.push(newV);
+    callVN(fs[i], args);
+  }
+}
+export function kaddWatch(a: Value, k: Value, f: Value): Value {
+  if (!(a instanceof Atom)) {
+    abort("add-watch: not an atom");
+    return NIL;
+  }
+  const at = changetype<Atom>(a);
+  for (let i = 0; i < at.watchKeys.length; i++) {
+    if (eq(at.watchKeys[i], k)) {
+      at.watchFns[i] = f;
+      return a;
+    }
+  }
+  at.watchKeys.push(k);
+  at.watchFns.push(f);
+  return a;
+}
+export function kremoveWatch(a: Value, k: Value): Value {
+  if (!(a instanceof Atom)) {
+    abort("remove-watch: not an atom");
+    return NIL;
+  }
+  const at = changetype<Atom>(a);
+  for (let i = 0; i < at.watchKeys.length; i++) {
+    if (eq(at.watchKeys[i], k)) {
+      at.watchKeys.splice(i, 1);
+      at.watchFns.splice(i, 1);
+      break;
+    }
+  }
+  return a;
+}
 export function kreset(a: Value, v: Value): Value {
   if (a instanceof Atom) {
-    changetype<Atom>(a).v = v;
+    const at = changetype<Atom>(a);
+    const old = at.v;
+    at.v = v;
+    notifyWatches(at, old, v);
     return v;
   }
   abort("reset!: not an atom");
@@ -2232,7 +2283,9 @@ export function kswap(a: Value, f: Value, args: Array<Value>): Value {
   const all = new Array<Value>();
   all.push(at.v);
   for (let i = 0; i < args.length; i++) all.push(args[i]);
+  const old = at.v;
   at.v = callVN(f, all);
+  notifyWatches(at, old, at.v);
   return at.v;
 }
 

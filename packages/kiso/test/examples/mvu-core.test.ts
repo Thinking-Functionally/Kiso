@@ -17,7 +17,7 @@ const SCENARIOS = `
 (def same-model-no-notify
   (let [s (create-store 0 (fn [m e] (if (= e :noop) m (inc m))) nil)
         n (atom 0)]
-    (.addWatch (store-model s) :w (fn [a b c d] (swap! n inc)))
+    (add-watch (store-model s) :w (fn [_ _ _ _] (swap! n inc)))
     (store-dispatch s :noop)
     (store-dispatch s :inc)
     @n))
@@ -32,13 +32,13 @@ const SCENARIOS = `
   (let [log (atom [])
         s (create-store 0
                         (fn [m e] (swap! log conj e) (inc m))
-                        (fn [m p e d] (when (= e :a) (d :b) (swap! log conj :after-a))))]
+                        (fn [_ _ e d] (when (= e :a) (d :b) (swap! log conj :after-a))))]
     (store-dispatch s :a)
     (pr-str [@log @(store-model s)])))
 
 (def recovers
   (let [s (create-store 0 (fn [m e] (if (= e :boom) (throw (js/Error. "x")) (inc m))) nil)]
-    (try (store-dispatch s :boom) (catch :default err nil))
+    (try (store-dispatch s :boom) (catch :default _ nil))
     (store-dispatch s :ok)
     @(store-model s)))
 `;
