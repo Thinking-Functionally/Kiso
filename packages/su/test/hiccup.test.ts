@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { parseTag, renderHiccup, patchNode } from '../src/hiccup.js';
 import { Atom } from '../../kiso/src/runtime/atom.js';
+import { LazySeq } from '../../kiso/src/runtime/lazy-seq.js';
+import { list } from '../../kiso/src/runtime/list.js';
 import { initReactiveTracking } from '../src/reactive.js';
 
 describe('parseTag', () => {
@@ -479,5 +481,49 @@ describe('patchNode', () => {
     expect(el.children[0]).toBe(originalSpan); // span reused
     expect(el.children[0].children[0]).toBe(originalEm); // em reused
     expect(originalEm.children[0].data).toBe('updated');
+  });
+});
+
+describe('lazy sequences as children', () => {
+  beforeEach(() => {
+    vi.stubGlobal('document', {
+      createElement: (tag: string) => createMockElement(tag),
+      createTextNode: (text: string) => createMockTextNode(text),
+      createComment: (text: string) => createMockComment(text),
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const lazy = (...items: unknown[]) => new LazySeq(() => list(...items));
+
+  it('flattens a LazySeq child (e.g. from map) in renderHiccup', () => {
+    const node = renderHiccup(['ul', lazy(['li', 'a'], ['li', 'b'])]) as unknown as MockNode;
+    expect(node.children.map((c: MockNode) => c.tag)).toEqual(['li', 'li']);
+    expect(node.children[1].children[0].text).toBe('b');
+  });
+
+  it('flattens a Kiso list child', () => {
+    const node = renderHiccup(['ul', list(['li', 'a'], ['li', 'b'])]) as unknown as MockNode;
+    expect(node.children).toHaveLength(2);
+  });
+
+  it('flattens nested sequences (for inside map)', () => {
+    const node = renderHiccup(['div', lazy(lazy(['b', '1'], ['b', '2']), ['i', '3'])]) as unknown as MockNode;
+    expect(node.children.map((c: MockNode) => c.tag)).toEqual(['b', 'b', 'i']);
+  });
+
+  it('renders an empty LazySeq as nothing', () => {
+    const node = renderHiccup(['ul', lazy()]) as unknown as MockNode;
+    expect(node.children).toHaveLength(0);
+  });
+
+  it('keeps flattening lazy seqs when patching', () => {
+    const root = renderHiccup(['ul', lazy(['li', 'a'])]) as unknown as MockNode;
+    patchNode(root as unknown as Node, ['ul', lazy(['li', 'a'], ['li', 'b'], ['li', 'c'])]);
+    expect(root.children.map((c: MockNode) => c.tag)).toEqual(['li', 'li', 'li']);
+    expect(root.children[2].children[0].text).toBe('c');
   });
 });

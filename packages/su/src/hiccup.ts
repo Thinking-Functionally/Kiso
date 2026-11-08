@@ -4,7 +4,7 @@
 // renderHiccup: convert hiccup vectors to DOM nodes (browser only)
 // bind: reactive DOM fragment that re-renders on atom changes
 
-import { cljToJs } from '@clojurewasm/kiso/runtime';
+import { cljToJs, LazySeq, isList, toArray } from '@clojurewasm/kiso/runtime';
 import { effect } from './reactive.js';
 
 export type ParsedTag = {
@@ -74,8 +74,25 @@ function isHiccupVector(x: unknown): x is HiccupVector {
   return Array.isArray(x) && x.length > 0 && typeof x[0] === 'string';
 }
 
+/** A child that stands for several children: a non-hiccup array, a LazySeq (map/for) or a list. */
+function isChildSeq(x: unknown): boolean {
+  if (Array.isArray(x)) return x.length > 0 && !isHiccupVector(x);
+  return x instanceof LazySeq || isList(x);
+}
+
+/** Append `child` to `out`, recursively flattening sequences and skipping null/undefined. */
+function pushChild(child: unknown, out: HiccupNode[]): void {
+  if (child === null || child === undefined) return;
+  if (isChildSeq(child)) {
+    const items = Array.isArray(child) ? child : toArray(child as never);
+    for (const item of items) pushChild(item, out);
+  } else {
+    out.push(child as HiccupNode);
+  }
+}
+
 function isAttrsMap(x: unknown): x is Record<string, unknown> {
-  return x !== null && typeof x === 'object' && !Array.isArray(x);
+  return x !== null && typeof x === 'object' && !Array.isArray(x) && !isChildSeq(x);
 }
 
 // -- renderHiccup --
@@ -117,15 +134,9 @@ export function renderHiccup(hiccup: HiccupNode): Node {
 
   for (let i = childStart; i < rest.length; i++) {
     const child = rest[i];
-    if (child === null || child === undefined) continue;
-    if (Array.isArray(child) && child.length > 0 && !isHiccupVector(child)) {
-      // Sequence (from map/for) — flatten
-      for (const item of child) {
-        el.appendChild(renderHiccup(item as HiccupNode));
-      }
-    } else {
-      el.appendChild(renderHiccup(child as HiccupNode));
-    }
+    const flat: HiccupNode[] = [];
+    pushChild(child, flat);
+    for (const item of flat) el.appendChild(renderHiccup(item));
   }
 
   return el;
@@ -190,14 +201,7 @@ function applyAttrs(el: HTMLElement, attrs: Record<string, unknown>, tag: string
 
 function flattenChildren(rest: unknown[]): HiccupNode[] {
   const result: HiccupNode[] = [];
-  for (const child of rest) {
-    if (child === null || child === undefined) continue;
-    if (Array.isArray(child) && child.length > 0 && !isHiccupVector(child)) {
-      for (const item of child) result.push(item as HiccupNode);
-    } else {
-      result.push(child as HiccupNode);
-    }
-  }
+  for (const child of rest) pushChild(child, result);
   return result;
 }
 

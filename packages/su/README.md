@@ -48,6 +48,16 @@ export default { plugins: [cljs()] };
 npx vite
 ```
 
+## Sequences as children
+
+Inside a view you can use `map` / `for` results directly as children, like Reagent. Lazy seqs, lists and nested sequences are flattened and `nil` is skipped:
+
+```clojure
+[:ul (map (fn [x] [:li x]) items)]
+```
+
+The renderer realizes the whole sequence, so never pass an infinite one (use `take`).
+
 ## Features
 
 - **Custom Elements** with Shadow DOM isolation via `defc`

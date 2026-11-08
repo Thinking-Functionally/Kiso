@@ -531,3 +531,4 @@ and compile during build (requires self-hosted compilation / namespace loading i
 - D69: `clj_to_js` now converts LazySeq to a plain array (recursively); test added in interop-ext.test.ts.
 - D70: JS backend — duplicate fn params (`[_ _]`) get suffixed names (last keeps its name, incl. recur targets) so ESM loads; added runtime `add_watch`/`remove_watch` (return the ref) + auto-import. AS has no `add-watch` yet (test targets js).
 - D71: AS backend — `add-watch`/`remove-watch` (Atom keeps key/fn arrays; reset!/swap! notify with snapshot; same key replaces). `(loop [_ 1 _ 2] …)` already works on both backends (test added); D70 note claiming otherwise was wrong.
+- D72: su hiccup renderer flattens LazySeq/list/nested seqs as children in renderHiccup and patchNode (pushChild); a seq as first child is no longer mistaken for an attrs map. Infinite seqs are not guarded (documented in su README).
