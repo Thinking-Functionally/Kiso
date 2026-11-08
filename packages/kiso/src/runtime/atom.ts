@@ -95,6 +95,16 @@ export function deref(ref: Atom | Reduced): unknown {
   return (ref as Atom).deref();
 }
 
+export function add_watch(ref: Atom, key: unknown, fn: WatchFn): Atom {
+  ref.addWatch(key, fn);
+  return ref;
+}
+
+export function remove_watch(ref: Atom, key: unknown): Atom {
+  ref.removeWatch(key);
+  return ref;
+}
+
 export function reset_m(ref: Atom, newVal: unknown): unknown {
   return ref.reset(newVal);
 }

@@ -445,6 +445,18 @@ function emitLetfn(node: { bindings: LetBinding[]; body: Node }, ctx: EmitCtx): 
   return `(() => {\n${i}let ${decls};\n${assigns}\n${i}return ${emitNode(node.body, inner)};\n${ind(ctx)}})()`;
 }
 
+/** Munged param names; ES strict mode forbids duplicates, so earlier repeats (e.g. `_ _`) get a suffix and the last one keeps the name, as in Clojure. */
+function dedupeParams(params: string[]): string[] {
+  const seen = new Set<string>();
+  const out = params.map(munge);
+  for (let i = out.length - 1; i >= 0; i--) {
+    const m = out[i]!;
+    if (seen.has(m)) out[i] = `${m}$${i}`;
+    else seen.add(m);
+  }
+  return out;
+}
+
 function emitFn(node: { name: string | null; arities: FnArity[] }, outerCtx: EmitCtx): string {
   const name = node.name ? munge(node.name) : '';
 
@@ -460,7 +472,7 @@ function emitFn(node: { name: string | null; arities: FnArity[] }, outerCtx: Emi
   const bi = ind(deeper(caseCtx));
   const cases = node.arities.map((arity) => {
     const n = arity.params.length;
-    const params = arity.params.map(munge).join(', ');
+    const params = dedupeParams(arity.params).join(', ');
     const ctx: EmitCtx = { ...scopeWith(deeper(caseCtx), [...arity.params, ...(arity.restParam ? [arity.restParam] : [])]), loopBindings: arity.params };
     const body = emitFnBody(arity.body, ctx, bi);
     if (arity.restParam) {
@@ -491,7 +503,7 @@ function emitFnBody(body: Node, ctx: EmitCtx, indent: string): string {
 }
 
 function emitSingleArity(name: string, arity: FnArity, outerCtx: EmitCtx): string {
-  const params = arity.params.map(munge);
+  const params = dedupeParams(arity.params);
   if (arity.restParam) {
     params.push(`...${munge(arity.restParam)}`);
   }
@@ -516,7 +528,7 @@ function emitDeftype(node: DeftypeNode, ctx: EmitCtx): string {
   for (const impl of node.protocols) {
     const protoVar = emitNode(impl.protocol, ctx);
     for (const m of impl.methods) {
-      const mParams = m.params.slice(1).map(munge);
+      const mParams = dedupeParams(m.params.slice(1));
       const self = m.params[0] ? munge(m.params[0]) : 'this_';
       const mctx = scopeWith(ii, [...m.params, ...node.fields]);
       const unpack = [`const ${self} = this;`, ...node.fields.map((f) => `const ${munge(f)} = this.${munge(f)};`)].map((l) => `${i2}${l}\n`).join('');
@@ -544,7 +556,7 @@ function emitDefrecord(node: DefrecordNode, ctx: EmitCtx): string {
   for (const impl of node.protocols) {
     const protoVar = emitNode(impl.protocol, ctx);
     for (const m of impl.methods) {
-      const mParams = m.params.slice(1).map(munge);
+      const mParams = dedupeParams(m.params.slice(1));
       const self = m.params[0] ? munge(m.params[0]) : 'this_';
       const mctx = scopeWith(ii, [...m.params, ...node.fields]);
       const unpack = [`const ${self} = this;`, ...node.fields.map((f) => `const ${munge(f)} = this.${munge(f)};`)].map((l) => `${i2}${l}\n`).join('');
@@ -570,7 +582,7 @@ function emitReify(node: ReifyNode, ctx: EmitCtx): string {
   for (const impl of node.protocols) {
     const protoVar = emitNode(impl.protocol, ctx);
     for (const m of impl.methods) {
-      const mParams = m.params.slice(1).map(munge); // skip 'this'
+      const mParams = dedupeParams(m.params.slice(1)); // skip 'this'
       const self = m.params[0] ? munge(m.params[0]) : 'this_';
       const body = emitNode(m.body, scopeWith(ctx, m.params));
       methods.push(`[${protoVar}.methods.${m.name}](${mParams.join(', ')}) { const ${self} = this; return ${body}; }`);
@@ -586,7 +598,7 @@ function emitExtendType(node: ExtendTypeNode, ctx: EmitCtx): string {
   for (const impl of node.protocols) {
     const protoVar = emitNode(impl.protocol, ctx);
     for (const m of impl.methods) {
-      const mParams = m.params.slice(1).map(munge); // skip 'this'
+      const mParams = dedupeParams(m.params.slice(1)); // skip 'this'
       const self = m.params[0] ? munge(m.params[0]) : 'this_';
       const body = emitNode(m.body, scopeWith(ctx, m.params));
       const fnJs = `function(${mParams.join(', ')}) { const ${self} = this; return ${body}; }`;
@@ -699,8 +711,9 @@ function emitRecurStmt(node: { args: Node[] }, ctx: EmitCtx): string {
   const args = node.args.map((a) => emitNode(a, ctx));
 
   // Use temp variables for simultaneous assignment
-  const temps = names.map((n, idx) => `const ${munge(n)}__tmp = ${args[idx]};`);
-  const assigns = names.map((n) => `${munge(n)} = ${munge(n)}__tmp;`);
+  const targets = dedupeParams(names);
+  const temps = targets.map((n, idx) => `const ${n}__tmp = ${args[idx]};`);
+  const assigns = targets.map((n) => `${n} = ${n}__tmp;`);
   return [...temps, ...assigns, 'continue;'].join('\n' + i);
 }
 
@@ -866,7 +879,7 @@ const RUNTIME_FUNCTIONS = new Set([
   // Transducer support
   'transduce', 'completing', 'reduced', 'reduced?', 'unreduced', 'ensure-reduced',
   // extras.ts
-  'vector', 'keyword', 'vec', 'mapv', 'vector?', 'list?', 'true?', 'false?', 'boolean', 'hash-map', 'hash-set', 'keyword?', 'symbol?', 'map?', 'set?', 'int', 'long', 'short',
+  'add-watch', 'remove-watch', 'vector', 'keyword', 'vec', 'mapv', 'vector?', 'list?', 'true?', 'false?', 'boolean', 'hash-map', 'hash-set', 'keyword?', 'symbol?', 'map?', 'set?', 'int', 'long', 'short',
   'bit-and', 'bit-or', 'bit-xor', 'bit-not', 'bit-shift-left', 'bit-shift-right', 'distinct?', 'disj',
   'ifn', 'LazySeq', 'read-string', 'char', 'char?', 'min-key', 'max-key', 'split-at', 'split-with', 'sequence', 'rseq', 'shuffle', 'key', 'val', 'namespace',
 ]);
