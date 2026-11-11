@@ -70,3 +70,28 @@ pub extern "C" fn mean_and_max(p: i32, n: i32) -> i64 {
     let max = v.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
     pack_f64s(&[v.iter().sum::<f64>() / v.len() as f64, max])
 }
+
+#[no_mangle]
+pub extern "C" fn edn_echo(p: i32, l: i32) -> i64 {
+    unsafe { edn_roundtrip(p as u32, l as u32) }
+}
+
+/// `{:xs [numbers]}` -> `{:count n, :sum s, :max m}` (the max is nil for an empty list).
+#[no_mangle]
+pub extern "C" fn edn_stats(p: i32, l: i32) -> i64 {
+    let input = match edn::parse(&unsafe { str_arg(p as u32, l as u32) }) {
+        Ok(v) => v,
+        Err(e) => return fail(e),
+    };
+    let Some(xs) = input.get("xs").and_then(Edn::items) else {
+        return fail("expected {:xs [...]}");
+    };
+    let nums: Vec<f64> = xs.iter().filter_map(Edn::as_f64).collect();
+    let max = nums.iter().cloned().fold(None, |m: Option<f64>, x| Some(m.map_or(x, |m| m.max(x))));
+    let out = Edn::Map(vec![
+        (Edn::kw("count"), Edn::Int(nums.len() as i64)),
+        (Edn::kw("sum"), Edn::Float(nums.iter().sum())),
+        (Edn::kw("max"), max.map_or(Edn::Nil, Edn::Float)),
+    ]);
+    pack_str(&edn::to_string(&out))
+}

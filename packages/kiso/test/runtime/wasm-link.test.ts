@@ -62,6 +62,12 @@ describe('defwasm', () => {
   it('rejects unsupported types at compile time', () => {
     expect(() => compile('(defwasm f "m" [:i64] :i32)', { target: 'js' })).toThrow(/unsupported type :i64/);
   });
+  it('wraps :edn arguments in pr-str and results in read-string', () => {
+    const js = compile('(defwasm q "m" [:edn :i32] :edn)', { target: 'js' }).code;
+    expect(js).toMatch(/read_string/);
+    expect(js).toMatch(/pr_str/);
+    expect(js).toContain('"si>s"');
+  });
   it('uses the munged name as the export unless given', () => {
     const js = compile('(defwasm is-even "m" [:i32] :bool)\n(defwasm f "m" "other" [] :nil)', { target: 'js' }).code;
     expect(js).toContain('"is_even"');

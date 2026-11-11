@@ -997,7 +997,7 @@ defmacro('dotimes', (items, form) => {
 });
 
 // (defwasm name "module" ["export"] [arg-types] ret-type) → a fn that calls a registered wasm module (design 09).
-const WASM_TYPES: Record<string, string> = { i32: 'i', f64: 'd', bool: 'b', str: 's', f64s: 'D', i32s: 'I', u8s: 'B' };
+const WASM_TYPES: Record<string, string> = { i32: 'i', f64: 'd', bool: 'b', str: 's', f64s: 'D', i32s: 'I', u8s: 'B', edn: 's' };
 
 defmacro('defwasm', (items, form) => {
   const nameForm = nth(items, 1);
@@ -1022,12 +1022,17 @@ defmacro('defwasm', (items, form) => {
     if (!c) throw new Error(`defwasm: unsupported type :${t} (supported: ${Object.keys(WASM_TYPES).map((k) => ':' + k).join(' ')}${allowNil ? ' :nil' : ''})`);
     return c;
   };
-  const argChars = argsForm.data.items.map((f) => typeChar(f, false));
+  const isEdn = (f: Form) => f.data.type === 'keyword' && f.data.name === 'edn';
+  const argForms = argsForm.data.items;
+  const argChars = argForms.map((f) => typeChar(f, false));
   const sig = `${argChars.join('')}>${typeChar(retForm, true)}`;
   const params = argChars.map((_, i) => sym(`wasm__a${i}`));
+  // :edn values cross the boundary as strings: pr-str on the way in, read-string on the way out
+  const callArgs = params.map((p, i) => (isEdn(argForms[i]!) ? makeList([sym('pr-str'), p]) : p));
+  const call = makeList([makeSymbol('host', 'wasm-call'), moduleForm, makeStr(exportName), makeStr(sig), ...callArgs]);
   return makeList([
     sym('defn'), nameForm, makeVector(params),
-    makeList([makeSymbol('host', 'wasm-call'), moduleForm, makeStr(exportName), makeStr(sig), ...params]),
+    isEdn(retForm) ? makeList([sym('read-string'), call]) : call,
   ], ...loc(form));
 });
 

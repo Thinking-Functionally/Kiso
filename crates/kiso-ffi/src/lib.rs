@@ -3,7 +3,10 @@
 //! A module re-exports the allocator pair with [`kiso_abi!`] and returns variable-length
 //! results as a packed `i64` (`(len << 32) | ptr`) produced by the `pack_*` functions.
 
+pub mod edn;
+
 use std::cell::RefCell;
+pub use edn::Edn;
 
 /// Pointer used for successful results of length 0 (never dereferenced).
 const EMPTY_PTR: u32 = 1;
@@ -79,6 +82,17 @@ pub fn pack_bytes(v: Vec<u8>) -> i64 {
 
 pub fn pack_str(s: &str) -> i64 {
     pack_bytes(s.as_bytes().to_vec())
+}
+
+/// Parses an EDN string argument and returns it re-printed; `fail`s (packed 0) on invalid input.
+///
+/// # Safety
+/// Same as [`bytes`].
+pub unsafe fn edn_roundtrip(ptr: u32, len: u32) -> i64 {
+    match edn::parse(&str_arg(ptr, len)) {
+        Ok(v) => pack_str(&edn::to_string(&v)),
+        Err(e) => fail(e),
+    }
 }
 
 pub fn pack_f64s(v: &[f64]) -> i64 {
