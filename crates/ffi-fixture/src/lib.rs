@@ -1,0 +1,55 @@
+use kiso_ffi::*;
+
+kiso_ffi::kiso_abi!();
+
+#[no_mangle]
+pub extern "C" fn add(a: i32, b: i32) -> i32 {
+    a.wrapping_add(b)
+}
+
+#[no_mangle]
+pub extern "C" fn scale(x: f64, k: f64) -> f64 {
+    x * k
+}
+
+#[no_mangle]
+pub extern "C" fn is_even(n: i32) -> i32 {
+    (n % 2 == 0) as i32
+}
+
+#[no_mangle]
+pub extern "C" fn concat(ap: i32, al: i32, bp: i32, bl: i32) -> i64 {
+    let (a, b) = unsafe { (str_arg(ap as u32, al as u32), str_arg(bp as u32, bl as u32)) };
+    pack_str(&(a + &b))
+}
+
+#[no_mangle]
+pub extern "C" fn upper(p: i32, l: i32) -> i64 {
+    pack_str(&unsafe { str_arg(p as u32, l as u32) }.to_uppercase())
+}
+
+#[no_mangle]
+pub extern "C" fn sum_f64s(p: i32, n: i32) -> f64 {
+    unsafe { f64_arg(p as u32, n as u32) }.iter().sum()
+}
+
+#[no_mangle]
+pub extern "C" fn scale_f64s(p: i32, n: i32, k: f64) -> i64 {
+    let v: Vec<f64> = unsafe { f64_arg(p as u32, n as u32) }.iter().map(|x| x * k).collect();
+    pack_f64s(&v)
+}
+
+#[no_mangle]
+pub extern "C" fn sum_i32s(p: i32, n: i32) -> i32 {
+    unsafe { i32_arg(p as u32, n as u32) }.iter().fold(0i32, |a, b| a.wrapping_add(*b))
+}
+
+#[no_mangle]
+pub extern "C" fn echo_bytes(p: i32, l: i32) -> i64 {
+    pack_bytes(unsafe { bytes(p as u32, l as u32) }.to_vec())
+}
+
+#[no_mangle]
+pub extern "C" fn fail_always() -> i64 {
+    fail("fixture failure")
+}

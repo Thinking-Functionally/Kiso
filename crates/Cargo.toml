@@ -1,0 +1,10 @@
+[workspace]
+members = ["kiso-ffi", "ffi-fixture"]
+resolver = "2"
+
+[profile.release]
+opt-level = "z"
+lto = true
+panic = "abort"
+codegen-units = 1
+strip = true

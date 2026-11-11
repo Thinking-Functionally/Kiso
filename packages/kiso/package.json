@@ -37,6 +37,7 @@
     "build": "tsc",
     "test": "vitest run",
     "bench": "node bench/run.mjs",
+    "build:fixtures": "cargo build --manifest-path ../../crates/Cargo.toml --target wasm32-unknown-unknown --release -p ffi-fixture && wasm-opt -Oz --enable-bulk-memory-opt --enable-sign-ext --enable-nontrapping-float-to-int ../../crates/target/wasm32-unknown-unknown/release/ffi_fixture.wasm -o test/fixtures/ffi_fixture.wasm",
     "typecheck": "tsc --noEmit"
   },
   "files": [

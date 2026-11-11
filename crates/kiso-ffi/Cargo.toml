@@ -1,0 +1,8 @@
+[package]
+name = "kiso-ffi"
+version = "0.1.0"
+edition = "2021"
+description = "Plain C ABI helpers for wasm modules called from Kiso (design 09)"
+license = "MIT"
+
+[dependencies]
