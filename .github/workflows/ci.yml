@@ -36,3 +36,21 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - run: npm run build
       - run: npm run test:e2e
+
+  rust-ffi:
+    # Native crate tests, then the whole suite against a freshly built (not the committed) fixture.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: cargo test --manifest-path crates/Cargo.toml
+      - run: cargo build --manifest-path crates/Cargo.toml --target wasm32-unknown-unknown --release -p ffi-fixture
+      - run: cp crates/target/wasm32-unknown-unknown/release/ffi_fixture.wasm packages/kiso/test/fixtures/ffi_fixture.wasm
+      - run: npm ci
+      - run: npm test

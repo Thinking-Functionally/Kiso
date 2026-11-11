@@ -60,7 +60,13 @@ export class WasmLinker {
   async registerAsync(name: string, source: WasmSource | Response | Promise<Response>): Promise<void> {
     const resolved = await source;
     if (resolved instanceof Response) {
-      this.modules.set(name, (await WebAssembly.instantiateStreaming(resolved, {})).instance.exports as Exports);
+      // static hosts often omit the application/wasm content type, which streaming compilation requires
+      const bytes = resolved.clone();
+      try {
+        this.modules.set(name, (await WebAssembly.instantiateStreaming(resolved, {})).instance.exports as Exports);
+      } catch {
+        this.modules.set(name, (await WebAssembly.instantiate(await bytes.arrayBuffer(), {})).instance.exports as Exports);
+      }
     } else if (resolved instanceof WebAssembly.Instance || resolved instanceof WebAssembly.Module) {
       this.register(name, resolved);
     } else {

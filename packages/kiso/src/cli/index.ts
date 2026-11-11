@@ -20,6 +20,7 @@ Options:
   -o, --out <file>        (build) Output .wasm path
   --worker                (build) Serverless: emit <name>.wasm + worker.js (Cloudflare Workers)
   --handler <name>        (build --worker) Request handler def (default: handle)
+  --wasm <name=file>      (build --worker/run/serve) Link a Rust wasm module for defwasm; repeatable
   --runtime <gc>          (build/run) minimal (default; incremental when the program uses defwasm), stub or incremental
   -V, --version           Show version
   -h, --help              Show this help
@@ -32,6 +33,7 @@ Examples:
   kiso build app.cljs -o app.wasm
   kiso build api.cljs --worker --out-dir dist/
   kiso run app.cljs -- arg1 arg2
+  kiso run app.cljs --wasm solver=./solver.wasm
 `;
 
 export async function main(argv: string[]): Promise<void> {

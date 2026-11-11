@@ -37,7 +37,7 @@ Decision: do not add try/catch now. Use (4) for serverless (already how the work
 ## M3 Outcome
 
 - Vectors, maps (insertion-ordered, indexed past 8 entries), keywords, strings, structural `=`/hash, core fns as first-class values, keyword/map/vector as functions; see D20 for the exact subset and limits.
-- Performance: number-typed locals are unboxed, small ints cached, default build uses the `minimal` GC (D20). Warm Node timings: wasm beats JS on fib, vector and map benchmarks except with the `incremental` GC on map-heavy code.
+- Performance: number-typed locals are unboxed, small ints cached, default build uses the `minimal` GC (D20). Warm Node timings: see `bench/README.md` for current numbers; wasm is not uniformly faster than JS on collection-heavy code, so do not assume it. Bulk numeric work is best delegated to Rust through the FFI (design 09).
 - Differential tests (`collections.test.ts`) cover 13 programs plus AS-only semantics (structural keys, printing).
 
 ## M2 Outcome

@@ -74,6 +74,13 @@ describe('WasmLinker', () => {
     }
     expect(mem()).toBe(before);
   });
+  it('registers from a fetch Response, with or without the wasm content type', async () => {
+    for (const headers of [{ 'content-type': 'application/wasm' }, { 'content-type': 'application/octet-stream' }]) {
+      const l = new WasmLinker();
+      await l.registerAsync('fx', Promise.resolve(new Response(bytes, { headers })));
+      expect(l.call('fx', 'add', 'ii>i', [4, 5])).toBe(9);
+    }
+  });
   it('registers asynchronously', async () => {
     const l = new WasmLinker();
     await l.registerAsync('fx', bytes);

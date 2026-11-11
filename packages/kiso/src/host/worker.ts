@@ -7,6 +7,8 @@ export type WorkerOptions = {
   entry?: string;
   /** Backs `host/fetch` inside handlers (defaults to the platform `fetch`). */
   fetch?: FetchFn;
+  /** Wasm modules (e.g. built from Rust) for `defwasm`, by logical name; precompile them (workers disallow compiling bytes). */
+  wasm?: Record<string, WebAssembly.Module>;
 };
 
 /**
@@ -36,7 +38,7 @@ export function createWorker(module: WebAssembly.Module, opts: WorkerOptions = {
       for (const [k, v] of Object.entries(env)) if (typeof v === 'string') stringEnv[k] = v;
 
       let log = '';
-      const inst = await instantiateCore(module, { env: stringEnv, write: (s) => void (log += s), now: Date.now, fetch: opts.fetch });
+      const inst = await instantiateCore(module, { env: stringEnv, write: (s) => void (log += s), now: Date.now, fetch: opts.fetch, wasm: opts.wasm });
       if (typeof inst.exports[entry] !== 'function') return new Response(`module has no ${entry} export`, { status: 500 });
       try {
         return toResponse(await inst.callStringAsync(entry, reqJson));

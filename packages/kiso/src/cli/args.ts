@@ -13,17 +13,18 @@ export type CliArgs =
       target: 'js' | 'as';
       exports: string[];
     }
-  | { command: 'serve'; file: string; runtime: GcRuntime; exports: string[]; handler: string; port: number }
+  | { command: 'serve'; file: string; runtime: GcRuntime | undefined; exports: string[]; handler: string; port: number; wasm: Record<string, string> }
   | {
       command: 'build';
       file: string;
       outFile: string | null;
-      runtime: GcRuntime;
+      runtime: GcRuntime | undefined;
       exports: string[];
       worker: string | null;
       outDir: string | null;
+      wasm: Record<string, string>;
     }
-  | { command: 'run'; file: string; runtime: GcRuntime; exports: string[]; programArgs: string[] };
+  | { command: 'run'; file: string; runtime: GcRuntime | undefined; exports: string[]; programArgs: string[]; wasm: Record<string, string> };
 
 export function parseArgs(argv: string[]): CliArgs {
   const sep = argv.indexOf('--');
@@ -42,6 +43,7 @@ export function parseArgs(argv: string[]): CliArgs {
       export: { type: 'string', multiple: true },
       out: { type: 'string', short: 'o' },
       runtime: { type: 'string' },
+      wasm: { type: 'string', multiple: true },
       worker: { type: 'boolean', default: false },
       handler: { type: 'string' },
       port: { type: 'string' },
@@ -57,15 +59,21 @@ export function parseArgs(argv: string[]): CliArgs {
   if (command === 'build' || command === 'run' || command === 'serve') {
     const file = positionals[1];
     if (!file || positionals.length > 2) throw new Error(`${command} requires exactly one .cljs file`);
-    const runtime = (values.runtime as string | undefined) ?? 'minimal';
-    if (runtime !== 'minimal' && runtime !== 'stub' && runtime !== 'incremental') {
+    const runtime = values.runtime as GcRuntime | undefined;
+    if (runtime !== undefined && runtime !== 'minimal' && runtime !== 'stub' && runtime !== 'incremental') {
       throw new Error(`Unknown --runtime: ${runtime} (expected minimal, stub or incremental)`);
     }
     const exports = (values.export as string[] | undefined) ?? [];
+    const wasm: Record<string, string> = {};
+    for (const spec of (values.wasm as string[] | undefined) ?? []) {
+      const eq = spec.indexOf('=');
+      if (eq <= 0 || eq === spec.length - 1) throw new Error(`Invalid --wasm ${spec} (expected name=path.wasm)`);
+      wasm[spec.slice(0, eq)] = spec.slice(eq + 1);
+    }
     if (command === 'serve') {
       const port = Number((values.port as string | undefined) ?? 8787);
       if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error(`Invalid --port: ${values.port}`);
-      return { command, file, runtime, exports, handler: (values.handler as string | undefined) ?? 'handle', port };
+      return { command, file, runtime, exports, handler: (values.handler as string | undefined) ?? 'handle', port, wasm };
     }
     return command === 'build'
       ? {
@@ -76,8 +84,9 @@ export function parseArgs(argv: string[]): CliArgs {
           exports,
           worker: values.worker ? ((values.handler as string | undefined) ?? 'handle') : null,
           outDir: (values['out-dir'] as string | undefined) ?? null,
+          wasm,
         }
-      : { command, file, runtime, exports, programArgs };
+      : { command, file, runtime, exports, programArgs, wasm };
   }
 
   if (command !== 'compile') {

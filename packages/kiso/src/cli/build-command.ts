@@ -7,7 +7,11 @@ import { instantiateKiso } from '../host/node.js';
 import { createWorker } from '../host/worker.js';
 import type { NsLoader } from '../codegen-as/modules.js';
 
-type Common = { file: string; runtime: GcRuntime; exports: string[] };
+type Common = { file: string; runtime?: GcRuntime | undefined; exports: string[]; wasm?: Record<string, string> };
+
+function readWasm(map: Record<string, string> | undefined): Record<string, Uint8Array> {
+  return Object.fromEntries(Object.entries(map ?? {}).map(([name, path]) => [name, new Uint8Array(readFileSync(path))]));
+}
 
 /** Find `a/b/c.{cljc,cljs}` for ns `a.b.c` in the entry file's directory, its ancestors, or their `src/`. */
 function fileLoader(entry: string): NsLoader {
@@ -30,7 +34,7 @@ function fileLoader(entry: string): NsLoader {
 async function toWasm({ file, runtime, exports }: Common, worker?: string): Promise<Uint8Array> {
   const source = readFileSync(file, 'utf-8');
   const { code } = compile(source, { filename: basename(file), target: 'as', exports, worker, loadNs: fileLoader(file) });
-  return buildWasm(code, { runtime });
+  return buildWasm(code, runtime ? { runtime } : {});
 }
 
 /** `kiso build <file.cljs>`: Kiso -> AssemblyScript -> .wasm. Returns the output path. */
@@ -44,7 +48,12 @@ export async function buildCommand(
   mkdirSync(dirname(out), { recursive: true });
   if (o.worker) {
     const entry = join(dirname(out), 'worker.js');
-    writeFileSync(entry, workerEntrySource(basename(out)));
+    const linked = Object.entries(readWasm(o.wasm)).map(([name, data]) => {
+      const file = `${name}.ffi.wasm`;
+      writeFileSync(join(dirname(out), file), data);
+      return [name, file] as const;
+    });
+    writeFileSync(entry, workerEntrySource(basename(out), linked));
     process.stderr.write(`wrote ${relative(process.cwd(), entry)}\n`);
   }
   writeFileSync(out, bytes);
@@ -55,22 +64,27 @@ export async function buildCommand(
 /** `kiso run <file.cljs>`: build in memory and run `-main` on the Node host, awaiting `host/fetch`. Returns the exit code. */
 export async function runCommand(o: Common & { programArgs: string[] }): Promise<number> {
   const bytes = await toWasm(o);
-  const inst = await instantiateKiso(bytes, { args: o.programArgs });
+  const inst = await instantiateKiso(bytes, { args: o.programArgs, wasm: readWasm(o.wasm) });
   return inst.runMainAsync();
 }
 
-function workerEntrySource(wasmFile: string): string {
+function workerEntrySource(wasmFile: string, linked: (readonly [string, string])[]): string {
+  const imports = linked.map(([, file], i) => `import ffi${i} from './${file}';\n`).join('');
+  const opts = linked.length ? `, { wasm: { ${linked.map(([name], i) => `${JSON.stringify(name)}: ffi${i}`).join(', ')} } }` : '';
   return `import wasm from './${wasmFile}';
-import { createWorker } from '@clojurewasm/kiso/host/worker';
+${imports}import { createWorker } from '@clojurewasm/kiso/host/worker';
 
-export default createWorker(wasm);
+export default createWorker(wasm${opts});
 `;
 }
 
 /** `kiso serve <file.cljs>`: build the handler and serve it over HTTP on Node (local dev for --worker apps). */
 export async function serveCommand(o: Common & { handler: string; port: number }): Promise<void> {
   const bytes = await toWasm(o, o.handler);
-  const worker = createWorker(await WebAssembly.compile(bytes as BufferSource));
+  const linked = Object.fromEntries(
+    await Promise.all(Object.entries(readWasm(o.wasm)).map(async ([name, data]) => [name, await WebAssembly.compile(data as BufferSource)] as const)),
+  );
+  const worker = createWorker(await WebAssembly.compile(bytes as BufferSource), { wasm: linked });
   const server = createServer(async (req, res) => {
     try {
       const chunks: Buffer[] = [];
