@@ -51,6 +51,29 @@ describe('WasmLinker', () => {
   it('surfaces module errors for array results', () => {
     expect(() => linker.call('fx', 'mean_and_max', 'D>D', [[]])).toThrow(/empty input/);
   });
+  it('releases borrowed and result buffers (module memory stays flat)', () => {
+    const l = new WasmLinker();
+    l.register('fx', bytes);
+    const mem = (): number => (l as unknown as { modules: Map<string, { memory: WebAssembly.Memory }> }).modules.get('fx')!.memory.buffer.byteLength;
+    const big = 'x'.repeat(10_000);
+    l.call('fx', 'upper', 's>s', [big]);
+    const before = mem();
+    for (let i = 0; i < 2000; i++) l.call('fx', 'upper', 's>s', [big]);
+    expect(mem()).toBe(before);
+  });
+  it('frees borrowed buffers even when the call fails', () => {
+    const l = new WasmLinker();
+    l.register('fx', bytes);
+    const mem = (): number => (l as unknown as { modules: Map<string, { memory: WebAssembly.Memory }> }).modules.get('fx')!.memory.buffer.byteLength;
+    const arg = Array.from({ length: 5000 }, (_, i) => i);
+    l.call('fx', 'mean_and_max', 'D>D', [arg]);
+    expect(() => l.call('fx', 'mean_and_max', 'D>D', [[]])).toThrow();
+    const before = mem();
+    for (let i = 0; i < 2000; i++) {
+      try { l.call('fx', 'mean_and_max', 'D>D', [i % 2 ? [] : arg]); } catch { /* expected for []*/ }
+    }
+    expect(mem()).toBe(before);
+  });
   it('registers asynchronously', async () => {
     const l = new WasmLinker();
     await l.registerAsync('fx', bytes);

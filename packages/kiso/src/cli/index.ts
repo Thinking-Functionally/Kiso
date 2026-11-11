@@ -20,7 +20,7 @@ Options:
   -o, --out <file>        (build) Output .wasm path
   --worker                (build) Serverless: emit <name>.wasm + worker.js (Cloudflare Workers)
   --handler <name>        (build --worker) Request handler def (default: handle)
-  --runtime <gc>          (build/run) minimal (default), stub or incremental
+  --runtime <gc>          (build/run) minimal (default; incremental when the program uses defwasm), stub or incremental
   -V, --version           Show version
   -h, --help              Show this help
 

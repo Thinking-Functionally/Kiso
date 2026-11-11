@@ -1224,7 +1224,10 @@ export function hostWasmCall(module: Value, exportName: Value, sig: Value, args:
   for (let i = 0; i < args.length; i++) {
     const t = sg.charCodeAt(i);
     const a = unchecked(args[i]);
-    if (t == 115) wasmArgStr(toStr(a, false)); // s
+    if (t == 115) { // s: strict like the JS backend, no implicit conversion
+      if (!(a instanceof Str)) abort("wasm: " + toStr(exportName, false) + " argument " + i.toString() + " must be a string");
+      wasmArgStr(changetype<Str>(a).v);
+    }
     else if (t == 68) { // D: f64 array
       const xs = items(a);
       const f = new Float64Array(xs.length);

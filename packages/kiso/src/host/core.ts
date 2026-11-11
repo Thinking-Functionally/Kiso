@@ -50,6 +50,8 @@ function blockingSleep(ms: number): void {
 /** Platform-neutral host; every capability has a portable default (no Node APIs). */
 
 export type KisoInstance = {
+  /** Linear memory shared with the module (diagnostics, e.g. heap growth). */
+  memory: WebAssembly.Memory;
   exports: Record<string, (...a: number[]) => number | void>;
   /** Runs `-main` if the module exports it. Returns the exit code (0 unless `host/exit` was called). */
   runMain(): number;
@@ -210,6 +212,7 @@ export async function instantiateCore(source: Uint8Array | WebAssembly.Module, o
     return 0;
   };
   return {
+    memory,
     exports,
     runMain() {
       if (started.code !== 0) return started.code;

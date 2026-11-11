@@ -27,7 +27,7 @@ export async function buildWasm(asSource: string, opts: BuildOptions = {}): Prom
   let binary: Uint8Array | null = null;
   let stderr = '';
   const args = [
-    'main.ts', '--outFile', 'out.wasm', '--runtime', opts.runtime ?? 'minimal',
+    'main.ts', '--outFile', 'out.wasm', '--runtime', opts.runtime ?? (asSource.includes('hostWasmCall(') ? 'incremental' : 'minimal'),
     '--importMemory', '--noAssert', '--exportRuntime', '--exportStart', '_start',
   ];
   if (opts.optimize !== false) args.push('-O3');
