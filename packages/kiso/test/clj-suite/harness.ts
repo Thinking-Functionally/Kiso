@@ -105,12 +105,12 @@ export async function runJsAsync(src: string, loadNs: (ns: string) => { source: 
   return lines.join('\n');
 }
 
-export async function runAs(src: string, loadNs: (ns: string) => { source: string } | null): Promise<string> {
+export async function runAs(src: string, loadNs: (ns: string) => { source: string } | null, wasm?: Record<string, Uint8Array>): Promise<string> {
   const { code } = compile(src, { target: 'as', loadNs, testMacros: true });
   const { buildWasm } = await import('../../src/codegen-as/build.js');
   const { instantiateKiso } = await import('../../src/host/node.js');
   let text = '';
-  const inst = await instantiateKiso(await buildWasm(code, { runtime: 'minimal' }), { write: (s: string) => void (text += s) });
+  const inst = await instantiateKiso(await buildWasm(code, { runtime: 'minimal' }), { write: (s: string) => void (text += s), wasm });
   inst.runMain();
   return text;
 }

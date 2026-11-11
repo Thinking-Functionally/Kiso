@@ -888,6 +888,7 @@ const RUNTIME_FUNCTIONS = new Set([
 const HOST_JS = new Map([
   ['host/json-parse', 'host_json_parse'],
   ['host/json-stringify', 'host_json_stringify'],
+  ['host/wasm-call', 'host_wasm_call'],
 ]);
 
 /** Scan AST for runtime function usage and return needed import names. */

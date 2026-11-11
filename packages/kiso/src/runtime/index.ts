@@ -12,6 +12,8 @@ export { seq, first, rest, next, toArray, into } from './seq.js';
 export { defprotocol, protocolFn } from './protocols.js';
 export { arrayMap, isArrayMap } from './array-map.js';
 export { host_json_parse, host_json_stringify } from './interop.js';
+export { registerWasm, host_wasm_call } from './wasm.js';
+export { WasmLinker, defaultLinker } from './wasm-link.js';
 export { clj_to_js, cljToJs, js_to_clj, jsToClj, bean, js_obj, js_array, into_array, to_array } from './interop.js';
 export { defmultiFn, prefer_method } from './multifn.js';
 export { derive, underive, parents, ancestors, descendants, isa_p, make_hierarchy } from './hierarchy.js';

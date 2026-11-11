@@ -257,7 +257,7 @@ const ASYNC_OPS = new Set(['chan', 'take!', 'put!', 'close!', 'offer!', 'timeout
 
 const RUNTIME_IMPORTS = [
   'kdrain', 'kparseLong', 'kparseDouble', 'kfetch', 'kfetchPending', 'kfetchResume', 'ksetResult', 'kresultValue', 'kchan0', 'kchan1', 'kbuffer', 'kdroppingBuffer', 'kslidingBuffer', 'kchTake1', 'kchTake2', 'kchPut2', 'kchPut3', 'kchClose', 'kchOffer', 'ktimeout', 'kgoStart', 'kgoDispatch', 'kgoAlts',
-  'hostArgs', 'hostEnvGet', 'hostReadFileV', 'hostWriteFileV', 'hostStdinV', 'hostExitV', 'hostNowV',
+  'hostArgs', 'hostEnvGet', 'hostReadFileV', 'hostWriteFileV', 'hostStdinV', 'hostExitV', 'hostNowV', 'hostWasmCall',
   'Value', 'Fn', 'Num', 'Str', 'Kw', 'NIL', 'TRUE', 'FALSE', 'bool_', 'truthy', 'asFn', 'arityError', 'throwValue', 'toF64', 'mkNum',
   'add', 'sub', 'mul', 'div', 'neg', 'inc', 'dec', 'rem', 'mod', 'lt', 'gt', 'lte', 'gte', 'isZero', 'isPos', 'isNeg', 'eq',
   'isEven', 'isOdd', 'isNil', 'isSome', 'isNumber', 'isString', 'isBoolean', 'isKeyword', 'isVector', 'isMap', 'identity',
@@ -529,6 +529,11 @@ class Emitter {
       this.usesAsync = true;
       const [url, opts = 'EMPTY_MAP'] = this.args(args);
       return `kfetch(${url}, jsonStringifyV(${opts}))`;
+    }
+    if (name === 'host/wasm-call') {
+      if (args.length < 3) return unsupported(name, 'expects module, export, signature and arguments');
+      const [m, e, sg, ...rest] = this.args(args);
+      return `hostWasmCall(${m}, ${e}, ${sg}, ${rest.length ? `[${rest.join(', ')}]` : 'new Array<Value>(0)'})`;
     }
     const spec = HOST_FNS[name];
     if (!spec) return unsupported(name, `unknown host function; available: ${Object.keys(HOST_FNS).join(', ')}`);

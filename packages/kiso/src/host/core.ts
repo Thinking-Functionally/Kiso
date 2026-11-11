@@ -1,3 +1,5 @@
+import { WasmLinker, type WasmSource } from '../runtime/wasm-link.js';
+
 /** Thrown through wasm when the program calls `(host/exit n)`. */
 export class ExitSignal extends Error {
   constructor(public code: number) {
@@ -20,6 +22,8 @@ export type HostOptions = {
   now?: () => number;
   /** Blocks for `ms` (used by core.async `timeout` once every go block is parked). */
   sleep?: (ms: number) => void;
+  /** Wasm modules (e.g. built from Rust) callable through `defwasm`, by logical name. */
+  wasm?: Record<string, WasmSource>;
 };
 
 function blockingSleep(ms: number): void {
@@ -84,6 +88,10 @@ export async function instantiateCore(source: Uint8Array | WebAssembly.Module, o
   const readFile = opts.readFile ?? (() => { throw new Error('no fs'); });
   const writeFile = opts.writeFile ?? (() => { throw new Error('no fs'); });
 
+  const linker = new WasmLinker();
+  for (const [name, source] of Object.entries(opts.wasm ?? {})) linker.register(name, source);
+  let call: { module: string; exportName: string; sig: string; args: unknown[]; result?: unknown; error?: string } | null = null;
+
   const pending = new Map<number, Promise<{ id: number; json: string }>>();
   const doFetch: FetchFn | undefined = opts.fetch ?? (typeof fetch === 'function' ? defaultFetch : undefined);
 
@@ -117,6 +125,29 @@ export async function instantiateCore(source: Uint8Array | WebAssembly.Module, o
           return 0;
         }
       },
+      wasm_begin: (m: number, e: number, s: number) => {
+        call = { module: read(m), exportName: read(e), sig: read(s), args: [] };
+      },
+      wasm_arg_f64: (v: number) => void call!.args.push(v),
+      wasm_arg_str: (p: number) => void call!.args.push(read(p)),
+      wasm_invoke: () => {
+        const c = call!;
+        try {
+          // 'b' arguments arrive as 0/1 numbers; the linker treats non-zero as true
+          const types = c.sig.split('>')[0]!;
+          c.result = linker.call(c.module, c.exportName, c.sig, c.args.map((a, i) => (types[i] === 'b' ? a !== 0 : a)));
+          return 1;
+        } catch (e) {
+          c.error = e instanceof Error ? e.message : String(e);
+          return 0;
+        }
+      },
+      wasm_ret_f64: () => {
+        const r = call!.result;
+        return typeof r === 'boolean' ? (r ? 1 : 0) : (r as number);
+      },
+      wasm_ret_str: () => alloc(call!.result as string),
+      wasm_error: () => alloc(call!.error ?? ''),
       stdin: () => alloc(opts.stdin ? opts.stdin() : ''),
       exit: (code: number) => {
         throw new ExitSignal(code);

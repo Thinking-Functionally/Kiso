@@ -996,6 +996,41 @@ defmacro('dotimes', (items, form) => {
   ], ...loc(form));
 });
 
+// (defwasm name "module" ["export"] [arg-types] ret-type) → a fn that calls a registered wasm module (design 09).
+const WASM_TYPES: Record<string, string> = { i32: 'i', f64: 'd', bool: 'b', str: 's' };
+
+defmacro('defwasm', (items, form) => {
+  const nameForm = nth(items, 1);
+  const moduleForm = nth(items, 2);
+  if (nameForm?.data.type !== 'symbol') throw new Error('defwasm requires a name symbol');
+  if (moduleForm?.data.type !== 'string') throw new Error('defwasm requires a module name string');
+  let rest = items.slice(3);
+  let exportName = nameForm.data.name.replace(/-/g, '_');
+  if (rest[0]?.data.type === 'string') {
+    exportName = rest[0].data.value;
+    rest = rest.slice(1);
+  }
+  const argsForm = rest[0];
+  const retForm = rest[1];
+  if (argsForm?.data.type !== 'vector' || retForm?.data.type !== 'keyword') {
+    throw new Error('defwasm usage: (defwasm name "module" ["export"] [arg-types] ret-type)');
+  }
+  const typeChar = (f: Form, allowNil: boolean): string => {
+    const t = f.data.type === 'keyword' ? f.data.name : '';
+    if (allowNil && t === 'nil') return 'v';
+    const c = WASM_TYPES[t];
+    if (!c) throw new Error(`defwasm: unsupported type :${t} (supported: ${Object.keys(WASM_TYPES).map((k) => ':' + k).join(' ')}${allowNil ? ' :nil' : ''})`);
+    return c;
+  };
+  const argChars = argsForm.data.items.map((f) => typeChar(f, false));
+  const sig = `${argChars.join('')}>${typeChar(retForm, true)}`;
+  const params = argChars.map((_, i) => sym(`wasm__a${i}`));
+  return makeList([
+    sym('defn'), nameForm, makeVector(params),
+    makeList([makeSymbol('host', 'wasm-call'), moduleForm, makeStr(exportName), makeStr(sig), ...params]),
+  ], ...loc(form));
+});
+
 defmacro('binding', (items, form) => {
   // (binding [var val ...] body...)
   // → (let* [old__0 var] (set! var val) (try (do body...) (finally (set! var old__0))))

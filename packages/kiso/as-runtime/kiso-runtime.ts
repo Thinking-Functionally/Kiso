@@ -84,6 +84,21 @@ declare function hostStdin(): string;
 declare function hostExit(code: i32): void;
 @external("host", "now")
 declare function hostNow(): f64;
+// wasm FFI (design 09): arguments stream into the host, which marshals through the shared WasmLinker
+@external("host", "wasm_begin")
+declare function wasmBegin(module: string, exportName: string, sig: string): void;
+@external("host", "wasm_arg_f64")
+declare function wasmArgF64(v: f64): void;
+@external("host", "wasm_arg_str")
+declare function wasmArgStr(v: string): void;
+@external("host", "wasm_invoke")
+declare function wasmInvoke(): bool;
+@external("host", "wasm_ret_f64")
+declare function wasmRetF64(): f64;
+@external("host", "wasm_ret_str")
+declare function wasmRetStr(): string;
+@external("host", "wasm_error")
+declare function wasmError(): string;
 
 // -- Functions ---------------------------------------------------------------
 
@@ -1196,6 +1211,25 @@ export function hostExitV(code: Value): Value {
 }
 export function hostNowV(): Value {
   return mkNum(hostNow());
+}
+export function hostWasmCall(module: Value, exportName: Value, sig: Value, args: Array<Value>): Value {
+  const sg = toStr(sig, false);
+  const gt = sg.indexOf(">");
+  if (gt != args.length) abort("wasm: " + toStr(exportName, false) + " expects " + gt.toString() + " argument(s), got " + args.length.toString());
+  wasmBegin(toStr(module, false), toStr(exportName, false), sg);
+  for (let i = 0; i < args.length; i++) {
+    const t = sg.charCodeAt(i);
+    const a = unchecked(args[i]);
+    if (t == 115) wasmArgStr(toStr(a, false)); // s
+    else if (t == 98) wasmArgF64(truthy(a) ? 1 : 0); // b
+    else wasmArgF64(toF64(a)); // i, d
+  }
+  if (!wasmInvoke()) abort(wasmError());
+  const r = sg.charCodeAt(gt + 1);
+  if (r == 118) return NIL; // v
+  if (r == 115) return new Str(wasmRetStr()); // s
+  if (r == 98) return bool_(wasmRetF64() != 0); // b
+  return mkNum(wasmRetF64());
 }
 
 // -- Printing ----------------------------------------------------------------
