@@ -6,14 +6,17 @@
  * optional `kiso_last_error()`. A string result is one i64 packed as `(len << 32) | ptr`; 0 means failure.
  */
 
+type ArrayCtor = Float64ArrayConstructor | Int32ArrayConstructor | Uint8ArrayConstructor;
+const ARRAYS: Record<string, ArrayCtor> = { D: Float64Array, I: Int32Array, B: Uint8Array };
+
 export type WasmSource = WebAssembly.Instance | WebAssembly.Module | BufferSource;
 
 type Sig = { args: string[]; ret: string };
 
-const SIG_CHARS = new Set(['i', 'd', 'b', 's']);
+const SIG_CHARS = new Set(['i', 'd', 'b', 's', 'D', 'I', 'B']);
 const sigCache = new Map<string, Sig>();
 
-/** Parses `"ii>i"`: one char per argument, `>`, one return char (`v` = nil). */
+/** Parses `"ii>i"`: one char per argument (i d b s; D I B = f64/i32/u8 arrays), `>`, one return char (`v` = nil). */
 export function parseSig(sig: string): Sig {
   const known = sigCache.get(sig);
   if (known) return known;
@@ -91,6 +94,20 @@ export class WasmLinker {
         switch (argTypes[i]) {
           case 'i': flat.push(asNumber(v, 'i32', module, exportName)); break;
           case 'd': flat.push(asNumber(v, 'f64', module, exportName)); break;
+          case 'D':
+          case 'I':
+          case 'B': {
+            const ctor = ARRAYS[argTypes[i]!]!;
+            if (v === null || v === undefined || typeof v === 'string' || typeof (v as ArrayLike<number>).length !== 'number') {
+              throw new Error(`wasm: ${module}/${exportName} argument ${i} must be an array of numbers`);
+            }
+            const typed = ctor.from(v as ArrayLike<number>);
+            const bytes = new Uint8Array(typed.buffer, typed.byteOffset, typed.byteLength);
+            const ptr = this.writeBytes(mod, bytes);
+            borrowed.push([ptr, bytes.length]);
+            flat.push(ptr, typed.length);
+            break;
+          }
           case 'b': flat.push(v === null || v === undefined || v === false ? 0 : 1); break;
           case 's': {
             if (typeof v !== 'string') throw new Error(`wasm: ${module}/${exportName} argument ${i} must be a string`);
@@ -108,7 +125,13 @@ export class WasmLinker {
         case 'i': return result as number;
         case 'd': return result as number;
         case 'b': return (result as number) !== 0;
-        default: return this.readPacked(mod, result as bigint, module, exportName);
+        case 's': return decoder.decode(this.readPacked(mod, result as bigint, module, exportName));
+        default: {
+          const bytes = this.readPacked(mod, result as bigint, module, exportName);
+          const ctor = ARRAYS[ret]!;
+          // copy into a fresh aligned buffer; the module's bytes may sit at any offset
+          return new ctor(bytes.slice().buffer);
+        }
       }
     } finally {
       for (const [ptr, len] of borrowed) mod.kiso_free?.(ptr, len);
@@ -122,13 +145,13 @@ export class WasmLinker {
     return ptr;
   }
 
-  private readPacked(mod: Exports, packed: bigint, module: string, exportName: string): string {
+  private readPacked(mod: Exports, packed: bigint, module: string, exportName: string): Uint8Array {
     if (packed === 0n) throw new Error(`wasm: ${module}/${exportName} failed: ${this.lastError(mod)}`);
     const ptr = Number(packed & 0xffffffffn);
     const len = Number(packed >> 32n);
-    const text = decoder.decode(new Uint8Array(mod.memory.buffer, ptr, len));
+    const bytes = new Uint8Array(mod.memory.buffer, ptr, len).slice();
     mod.kiso_free?.(ptr, len);
-    return text;
+    return bytes;
   }
 
   private lastError(mod: Exports): string {

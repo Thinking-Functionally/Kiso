@@ -91,6 +91,10 @@ declare function wasmBegin(module: string, exportName: string, sig: string): voi
 declare function wasmArgF64(v: f64): void;
 @external("host", "wasm_arg_str")
 declare function wasmArgStr(v: string): void;
+@external("host", "wasm_arg_buf")
+declare function wasmArgBuf(v: ArrayBuffer): void;
+@external("host", "wasm_ret_buf")
+declare function wasmRetBuf(): ArrayBuffer;
 @external("host", "wasm_invoke")
 declare function wasmInvoke(): bool;
 @external("host", "wasm_ret_f64")
@@ -1221,6 +1225,22 @@ export function hostWasmCall(module: Value, exportName: Value, sig: Value, args:
     const t = sg.charCodeAt(i);
     const a = unchecked(args[i]);
     if (t == 115) wasmArgStr(toStr(a, false)); // s
+    else if (t == 68) { // D: f64 array
+      const xs = items(a);
+      const f = new Float64Array(xs.length);
+      for (let j = 0; j < xs.length; j++) f[j] = toF64(unchecked(xs[j]));
+      wasmArgBuf(f.buffer);
+    } else if (t == 73) { // I: i32 array
+      const xs = items(a);
+      const f = new Int32Array(xs.length);
+      for (let j = 0; j < xs.length; j++) f[j] = <i32>toF64(unchecked(xs[j]));
+      wasmArgBuf(f.buffer);
+    } else if (t == 66) { // B: u8 array
+      const xs = items(a);
+      const f = new Uint8Array(xs.length);
+      for (let j = 0; j < xs.length; j++) f[j] = <u8>toF64(unchecked(xs[j]));
+      wasmArgBuf(f.buffer);
+    }
     else if (t == 98) wasmArgF64(truthy(a) ? 1 : 0); // b
     else wasmArgF64(toF64(a)); // i, d
   }
@@ -1229,6 +1249,24 @@ export function hostWasmCall(module: Value, exportName: Value, sig: Value, args:
   if (r == 118) return NIL; // v
   if (r == 115) return new Str(wasmRetStr()); // s
   if (r == 98) return bool_(wasmRetF64() != 0); // b
+  if (r == 68) { // D
+    const f = Float64Array.wrap(wasmRetBuf());
+    const out = new Array<Value>(f.length);
+    for (let j = 0; j < f.length; j++) out[j] = mkNum(f[j]);
+    return new Arr(out);
+  }
+  if (r == 73) { // I
+    const f = Int32Array.wrap(wasmRetBuf());
+    const out = new Array<Value>(f.length);
+    for (let j = 0; j < f.length; j++) out[j] = mkNum(<f64>f[j]);
+    return new Arr(out);
+  }
+  if (r == 66) { // B
+    const f = Uint8Array.wrap(wasmRetBuf());
+    const out = new Array<Value>(f.length);
+    for (let j = 0; j < f.length; j++) out[j] = mkNum(<f64>f[j]);
+    return new Arr(out);
+  }
   return mkNum(wasmRetF64());
 }
 

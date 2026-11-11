@@ -26,6 +26,14 @@ export type HostOptions = {
   wasm?: Record<string, WasmSource>;
 };
 
+const ARRAYBUFFER_ID = 1;
+
+/** AS ships `D`/`I` arrays as raw bytes; the linker takes typed arrays. */
+function decodeBuf(bytes: Uint8Array, type: string): Float64Array | Int32Array {
+  const copy = bytes.slice().buffer;
+  return type === 'D' ? new Float64Array(copy) : new Int32Array(copy);
+}
+
 function blockingSleep(ms: number): void {
   if (typeof SharedArrayBuffer !== 'undefined' && typeof Atomics !== 'undefined') {
     try {
@@ -130,12 +138,17 @@ export async function instantiateCore(source: Uint8Array | WebAssembly.Module, o
       },
       wasm_arg_f64: (v: number) => void call!.args.push(v),
       wasm_arg_str: (p: number) => void call!.args.push(read(p)),
+      wasm_arg_buf: (p: number) => {
+        const len = new Uint32Array(memory.buffer)[(p - 4) >>> 2]!;
+        // copy: the linker must not alias the AS heap
+        call!.args.push(new Uint8Array(memory.buffer, p, len).slice());
+      },
       wasm_invoke: () => {
         const c = call!;
         try {
           // 'b' arguments arrive as 0/1 numbers; the linker treats non-zero as true
           const types = c.sig.split('>')[0]!;
-          c.result = linker.call(c.module, c.exportName, c.sig, c.args.map((a, i) => (types[i] === 'b' ? a !== 0 : a)));
+          c.result = linker.call(c.module, c.exportName, c.sig, c.args.map((a, i) => (types[i] === 'b' ? a !== 0 : a instanceof Uint8Array && types[i] !== 'B' ? decodeBuf(a, types[i]!) : a)));
           return 1;
         } catch (e) {
           c.error = e instanceof Error ? e.message : String(e);
@@ -147,6 +160,12 @@ export async function instantiateCore(source: Uint8Array | WebAssembly.Module, o
         return typeof r === 'boolean' ? (r ? 1 : 0) : (r as number);
       },
       wasm_ret_str: () => alloc(call!.result as string),
+      wasm_ret_buf: () => {
+        const r = call!.result as ArrayBufferView;
+        const ptr = rt!.__new(r.byteLength, ARRAYBUFFER_ID);
+        new Uint8Array(memory.buffer, ptr, r.byteLength).set(new Uint8Array(r.buffer, r.byteOffset, r.byteLength));
+        return ptr;
+      },
       wasm_error: () => alloc(call!.error ?? ''),
       stdin: () => alloc(opts.stdin ? opts.stdin() : ''),
       exit: (code: number) => {

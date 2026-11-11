@@ -53,3 +53,20 @@ pub extern "C" fn echo_bytes(p: i32, l: i32) -> i64 {
 pub extern "C" fn fail_always() -> i64 {
     fail("fixture failure")
 }
+
+#[no_mangle]
+pub extern "C" fn rev_i32s(p: i32, n: i32) -> i64 {
+    let mut v = unsafe { i32_arg(p as u32, n as u32) };
+    v.reverse();
+    pack_i32s(&v)
+}
+
+#[no_mangle]
+pub extern "C" fn mean_and_max(p: i32, n: i32) -> i64 {
+    let v = unsafe { f64_arg(p as u32, n as u32) };
+    if v.is_empty() {
+        return fail("empty input");
+    }
+    let max = v.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+    pack_f64s(&[v.iter().sum::<f64>() / v.len() as f64, max])
+}

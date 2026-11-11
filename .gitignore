@@ -10,3 +10,4 @@ test-results/
 private/
 .dev/codegen-samples/js/
 crates/target/
+bench/.out-ffi/

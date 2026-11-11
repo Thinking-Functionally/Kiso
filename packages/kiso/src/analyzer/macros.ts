@@ -997,7 +997,7 @@ defmacro('dotimes', (items, form) => {
 });
 
 // (defwasm name "module" ["export"] [arg-types] ret-type) → a fn that calls a registered wasm module (design 09).
-const WASM_TYPES: Record<string, string> = { i32: 'i', f64: 'd', bool: 'b', str: 's' };
+const WASM_TYPES: Record<string, string> = { i32: 'i', f64: 'd', bool: 'b', str: 's', f64s: 'D', i32s: 'I', u8s: 'B' };
 
 defmacro('defwasm', (items, form) => {
   const nameForm = nth(items, 1);

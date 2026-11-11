@@ -37,6 +37,20 @@ describe('WasmLinker', () => {
   it('turns a packed 0 into an error with the module message', () => {
     expect(() => linker.call('fx', 'fail_always', '>s', [])).toThrow(/fail_always failed: fixture failure/);
   });
+  it('marshals typed arrays in both directions', () => {
+    expect(linker.call('fx', 'sum_f64s', 'D>d', [[1.5, 2.5]])).toBe(4);
+    expect(linker.call('fx', 'sum_i32s', 'I>i', [new Int32Array([1, 2, 3])])).toBe(6);
+    expect([...(linker.call('fx', 'rev_i32s', 'I>I', [[1, 2, 3]]) as Int32Array)]).toEqual([3, 2, 1]);
+    expect([...(linker.call('fx', 'echo_bytes', 'B>B', [[0, 255]]) as Uint8Array)]).toEqual([0, 255]);
+    expect((linker.call('fx', 'echo_bytes', 'B>B', [[]]) as Uint8Array).length).toBe(0);
+  });
+  it('rejects non-array values for array arguments', () => {
+    expect(() => linker.call('fx', 'sum_f64s', 'D>d', ['abc'])).toThrow(/array of numbers/);
+    expect(() => linker.call('fx', 'sum_f64s', 'D>d', [null])).toThrow(/array of numbers/);
+  });
+  it('surfaces module errors for array results', () => {
+    expect(() => linker.call('fx', 'mean_and_max', 'D>D', [[]])).toThrow(/empty input/);
+  });
   it('registers asynchronously', async () => {
     const l = new WasmLinker();
     await l.registerAsync('fx', bytes);

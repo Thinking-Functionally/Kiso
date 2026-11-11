@@ -27,3 +27,18 @@ Reading the numbers:
 The first run of this suite found two real bugs, both fixed: JS `range`/`map`/etc. overflowed the stack on large
 collections (`list(...array)` spread), and AS string building was quadratic in memory (`out += …` without a GC),
 trapping on `(apply str …)` of 50k items. Regression tests: `test/kiso/large_test.cljs`.
+
+## Rust wasm FFI (`npm run bench:ffi`)
+
+`bench/ffi.mjs` compares `defwasm` calls into the Rust fixture (`crates/ffi-fixture`) with equivalent pure
+ClojureScript, on both backends (Node, median of 7, ms):
+
+| workload | js pure | js ffi | as pure | as ffi |
+|---|---|---|---|---|
+| sum of a 100k-element vector x20 (`:f64s`) | 25.8 | 12.8 | 34.4 | 6.8 |
+| 100k scalar calls (`:i32 :i32`) | 0.2 | 5.3 | 2.8 | 83.0 |
+| 10k string calls (`:str`) | 0.2 | 5.3 | 0.5 | 18.9 |
+
+Reading the numbers:
+- FFI pays off for bulk work: one call over a large array is 2x (JS) to 5x (AS) faster than the pure loop, including marshalling.
+- It does not pay off for tiny calls: a call costs about 50 ns on JS and about 0.8 us on AS (arguments stream through host imports), so put the loop inside Rust instead of calling it per element.
